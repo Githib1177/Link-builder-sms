@@ -1,70 +1,191 @@
-<script>
-// ⬇️ Nahraď v souboru jen tuto funkci sendSms (zbytek nech jak je)
-async function sendSms(){
-  const toRaw   = Q('#smsTo').value.trim();
-  const lang    = Q('#smsLang').value;
-  const text    = (function(){
-    const map = { cz:'#smsCZ', en:'#smsEN', de:'#smsDE' };
-    const el = Q(map[lang] || '#smsCZ');
-    return (el && el.value) ? el.value.trim() : '';
-  })();
-  const statusEl = Q('#smsStatus');
+// api/send-sms.js
 
-  if(!toRaw){ statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
-  if(!text){ statusEl.textContent = 'Nejprve klikni na „Vygenerovat odkazy“, aby se vytvořil text.'; return; }
+// ---------- Pomocné funkce ----------
+function stripDiacritics(s) {
+  if (!s) return '';
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[\r\n]+/g, ' ').trim();
+}
+function toUCS2Hex(s) {
+  let hex = '';
+  for (const ch of s) {
+    const code = ch.codePointAt(0);
+    if (code <= 0xffff) {
+      hex += code.toString(16).padStart(4, '0');
+    } else {
+      const cp = code - 0x10000;
+      const hi = 0xd800 + (cp >> 10);
+      const lo = 0xdc00 + (cp & 0x3ff);
+      hex += hi.toString(16).padStart(4, '0') + lo.toString(16).padStart(4, '0');
+    }
+  }
+  return hex;
+}
+function parseXml(raw) {
+  const errMatch = raw.match(/<err>(-?\d+)<\/err>/);
+  const idMatch  = raw.match(/<sms_id>(\d+)<\/sms_id>/);
+  return { err: errMatch ? Number(errMatch[1]) : null, sms_id: idMatch ? idMatch[1] : null };
+}
+const ERR_MAP = {
+  0: 'OK',
+  1: 'Neznámá chyba',
+  2: 'Neplatný login',
+  3: 'Neplatný hash/heslo',
+  4: 'Neplatný time',
+  5: 'Nepovolená IP',
+  6: 'Neplatná akce / parametry / kódování',
+  7: 'Salt již použit',
+  8: 'Chyba DB',
+  9: 'Nedostatečný kredit',
+  10: 'Neplatné číslo',
+  11: 'Chyba odeslání',
+  12: 'Chybný parametr',
+};
 
-  // normalizace tel. čísel (stejně jako dřív)
-  const numbers = toRaw
-    .split(/[,\n;]+/)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(s => s.replace(/[^+\d]/g,''))
-    .filter(s => /^\+?\d{8,15}$/.test(s));
+// ---------- Nízká úroveň: GET/POST volání ----------
+async function callGateway({ method, endpoint, query, body }) {
+  let url = endpoint;
+  const headers = {};
 
-  if(numbers.length === 0){ statusEl.textContent = 'Žádné validní číslo (použij +420…).'; return; }
+  if (method === 'GET') {
+    url += (endpoint.includes('?') ? '&' : '?') + new URLSearchParams(query).toString();
+  } else {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
 
-  statusEl.textContent = 'Odesílám…';
+  console.log('[send-sms] fetch', { method, endpoint, query: method === 'GET' ? query : undefined, body: method === 'POST' ? body : undefined });
 
-  try{
-    const resp = await fetch('/api/send-sms', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ to: numbers, text })
+  const r = await fetch(url, {
+    method,
+    headers,
+    body: method === 'POST' ? new URLSearchParams(body).toString() : undefined,
+  });
+
+  const raw = await r.text();
+  console.log('[send-sms] response', { status: r.status, raw });
+
+  const parsed = parseXml(raw);
+  return { http: r.status, raw, ...parsed, errMessage: parsed.err != null ? (ERR_MAP[parsed.err] || 'Neznámá chyba') : 'Neznámá odpověď' };
+}
+
+// ---------- Odeslání jedné SMS s více strategiemi ----------
+async function sendStrategies({ login, password, number, text }) {
+  // Připravíme varianty textu
+  const plain = String(text).replace(/[\r\n]+/g, ' ').trim();  // bez \n
+  const ascii = stripDiacritics(plain);
+  const ucs2hex = toUCS2Hex(plain);
+
+  // Endpoints a pořadí strategií:
+  const ENDPOINTS = [
+    'https://www.smsbrana.cz/smsconnect/http.php',
+    'https://api.smsbrana.cz/smsconnect/http.php',
+  ];
+
+  // 1) GET + ASCII (to je nejblíž tvému ručnímu testu, který fungoval)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'GET',
+      endpoint: ep,
+      query: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        message: ascii,
+      },
     });
-    const data = await resp.json().catch(()=> ({}));
+    if (res.err === 0) return { attempt: 'GET-ascii', endpoint: ep, ...res };
+  }
 
-    if(!resp.ok || !data){
-      throw new Error(data?.error || 'Chyba při odesílání');
+  // 2) GET + UCS2 (data_code=ucs2 + hex)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'GET',
+      endpoint: ep,
+      query: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        data_code: 'ucs2',
+        message: ucs2hex,
+      },
+    });
+    if (res.err === 0) return { attempt: 'GET-ucs2hex', endpoint: ep, ...res };
+  }
+
+  // 3) POST + ASCII (kdyby náhodou)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'POST',
+      endpoint: ep,
+      body: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        message: ascii,
+      },
+    });
+    if (res.err === 0) return { attempt: 'POST-ascii', endpoint: ep, ...res };
+  }
+
+  // 4) POST + UCS2
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'POST',
+      endpoint: ep,
+      body: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        data_code: 'ucs2',
+        message: ucs2hex,
+      },
+    });
+    if (res.err === 0) return { attempt: 'POST-ucs2hex', endpoint: ep, ...res };
+  }
+
+  // Nic neprošlo → vrať poslední výsledek (pro diagnostiku)
+  return { attempt: 'none', endpoint: ENDPOINTS[0], err: 6, errMessage: ERR_MAP[6] };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { to, text } = req.body || {};
+  console.log('[send-sms] body:', { to, text });
+
+  if (!text || !String(text).trim()) return res.status(400).json({ ok: false, error: 'Missing text' });
+  if (!to || (Array.isArray(to) && to.length === 0)) return res.status(400).json({ ok: false, error: 'Missing recipient number(s)' });
+
+  const LOGIN = process.env.SMS_LOGIN;
+  const PASSWORD = process.env.SMS_PASSWORD;
+  console.log('[send-sms] env loaded:', { hasLogin: !!LOGIN, hasPass: !!PASSWORD });
+  if (!LOGIN || !PASSWORD) return res.status(500).json({ ok: false, error: 'Missing SMS_LOGIN or SMS_PASSWORD env' });
+
+  // Normalizace čísel: ponecháme číslice/+, zahodíme + a whitespace
+  const toList = Array.isArray(to) ? to : String(to).split(/[,\n;]+/);
+  const numbers = toList
+    .map(x => String(x).trim())
+    .filter(Boolean)
+    .map(x => x.replace(/[^\d+]/g, ''))
+    .map(x => x.replace(/^\+/, ''))
+    .filter(x => /^\d{8,15}$/.test(x));
+
+  if (numbers.length === 0) return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
+
+  try {
+    const results = [];
+    for (const n of numbers) {
+      const r = await sendStrategies({ login: LOGIN, password: PASSWORD, number: n, text });
+      results.push({ number: n, ...r });
     }
-
-    // vyhodnocení výsledků
-    const results = Array.isArray(data.results) ? data.results : [];
-    const okCount = results.filter(r => r && (r.err === 0 || /<err>0<\/err>/.test(String(r.raw||'')))).length;
-
-    // vytáhneme detaily z 1. výsledku (id, cena, kredit) – pokud je gateway poslala
-    const first = results[0] || {};
-    const raw   = String(first.raw || '');
-
-    const smsId    = first.sms_id || (raw.match(/<sms_id>(\d+)<\/sms_id>/)?.[1] || '');
-    const price    = first.price   || (raw.match(/<price>([^<]+)<\/price>/)?.[1] || '');
-    const credit   = first.credit  || (raw.match(/<credit>([^<]+)<\/credit>/)?.[1] || '');
-    const endpoint = first.endpoint || '';
-
-    if(data.ok || okCount > 0){
-      const parts = [];
-      if(smsId)  parts.push(`id: ${smsId}`);
-      if(price)  parts.push(`cena: ${Number(price).toFixed ? Number(price).toFixed(2) : price} Kč`);
-      if(credit) parts.push(`kredit: ${credit}`);
-      if(results.length > 1) parts.unshift(`odesláno ${okCount}/${results.length}`);
-      statusEl.textContent = '✓ SMS odeslána' + (parts.length ? ` (${parts.join(', ')})` : '');
-    }else{
-      // najdeme první chybu a zobrazíme zprávu
-      const errItem = results.find(r => r && r.err !== 0) || {};
-      const errMsg  = errItem.errMessage || data.error || 'neznámá chyba';
-      statusEl.textContent = '✗ Nepodařilo se odeslat: ' + errMsg;
-    }
-  }catch(e){
-    statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
+    const ok = results.some(r => r.err === 0);
+    return res.status(200).json({ ok, results });
+  } catch (e) {
+    console.error('[send-sms] ERROR', e);
+    return res.status(500).json({ ok: false, error: e.message });
   }
 }
-</script>
+
