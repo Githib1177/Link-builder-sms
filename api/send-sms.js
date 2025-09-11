@@ -18,7 +18,9 @@ export default async function handler(req, res) {
     params.set('login', LOGIN);
     params.set('password', PASSWORD);
     params.set('action', 'send_sms');
-    params.set('number', Array.isArray(to) ? to[0] : to); // jen první číslo pro test
+    const first = Array.isArray(to) ? to[0] : to;
+const apiNumber = String(first).replace(/^\+/, '').replace(/\s+/g, '');
+params.set('number', apiNumber);
     params.set('message', text);
 
     console.log('[send-sms] request:', params.toString());
@@ -38,3 +40,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 }
+
