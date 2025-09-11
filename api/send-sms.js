@@ -1,5 +1,70 @@
 // api/send-sms.js
 
+// Pomocná funkce na odstranění diakritiky a „neGSM“ znaků pro fallback
+function toAsciiFallback(s) {
+  if (!s) return '';
+  // odstraní diakritiku
+  let out = s.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  // nahradí zalomení řádků mezerou (někdy vadí)
+  out = out.replace(/[\r\n]+/g, ' ');
+  // ořeže bílé znaky kolem
+  out = out.trim();
+  return out;
+}
+
+// jednoduché mapování chyb z XML
+const ERR_MAP = {
+  0: 'OK',
+  1: 'Chyba přihlášení (login/heslo)',
+  2: 'Chybí parametr',
+  3: 'Neplatné číslo',
+  4: 'Nedostatečný kredit',
+  5: 'Zakázaná akce',
+  6: 'Chybná zpráva (formát/kódování)',
+  7: 'Systémová chyba',
+};
+
+// rychlý parser <err> a <sms_id> z XML
+function parseXml(raw) {
+  const errMatch = raw.match(/<err>(\d+)<\/err>/);
+  const idMatch  = raw.match(/<sms_id>(\d+)<\/sms_id>/);
+  return {
+    err: errMatch ? Number(errMatch[1]) : null,
+    sms_id: idMatch ? idMatch[1] : null,
+  };
+}
+
+// odeslání jedné SMS s volitelným unicode flagem
+async function sendOne({ endpoint, login, password, number, message, useUnicode }) {
+  const params = new URLSearchParams();
+  params.set('login', login);
+  params.set('password', password);
+  params.set('action', 'send_sms');
+  params.set('number', number);
+  if (useUnicode) params.set('unicode', '1');
+  params.set('message', message);
+
+  const body = params.toString();
+  console.log('[send-sms] request:', body);
+
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  const raw = await r.text();
+  console.log('[send-sms] response:', r.status, raw);
+
+  const parsed = parseXml(raw);
+  return {
+    http: r.status,
+    raw,
+    ...parsed,
+    errMessage: parsed.err != null ? (ERR_MAP[parsed.err] || 'Neznámá chyba') : 'Neznámá odpověď',
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -23,75 +88,62 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: 'Missing SMS_LOGIN or SMS_PASSWORD env' });
   }
 
-  // rozdělení a normalizace čísel
+  // normalizace čísel (odstraníme vše kromě číslic a +, a + zahodíme – SMSbrána očekává bez plusu)
   const toList = Array.isArray(to) ? to : String(to).split(/[,\n;]+/);
   const numbers = toList
     .map(x => String(x).trim())
     .filter(Boolean)
-    .map(x => x.replace(/[^\d+]/g, ''))  // necháme jen číslice a +
-    .map(x => x.replace(/^\+/, ''))      // SMSbrána chce bez +
+    .map(x => x.replace(/[^\d+]/g, '')) // jen číslice a +
+    .map(x => x.replace(/^\+/, ''))     // bez +
     .filter(x => /^\d{8,15}$/.test(x));
 
   if (numbers.length === 0) {
     return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
   }
 
-  // Bezpečné řešení: vždy unicode=1 (čeština pak nikdy nespadne na err=6)
+  // primární endpoint z praxe (ruční testy ti fungovaly na doméně bez "api.")
   const endpoint = 'https://smsbrana.cz/smsconnect/http.php';
-
-  // jednoduché mapování chyb z XML
-  const ERR_MAP = {
-    0: 'OK',
-    1: 'Chyba přihlášení (login/heslo)',
-    2: 'Chybí parametr',
-    3: 'Neplatné číslo',
-    4: 'Nedostatečný kredit',
-    5: 'Zakázaná akce',
-    6: 'Chybná zpráva (často chybí UNICODE)',
-    7: 'Systémová chyba',
-  };
 
   try {
     const results = [];
 
     for (const n of numbers) {
-      const params = new URLSearchParams();
-      params.set('login', LOGIN);
-      params.set('password', PASSWORD);
-      params.set('action', 'send_sms');
-      params.set('number', n);
-      params.set('unicode', '1');           // <<< DŮLEŽITÉ: vždy posíláme unicode
-      params.set('message', text);
-
-      const body = params.toString();
-      console.log('[send-sms] request:', body);
-
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body
+      // 1) pokus s unicode=1 (pro diakritiku)
+      const firstTry = await sendOne({
+        endpoint,
+        login: LOGIN,
+        password: PASSWORD,
+        number: n,
+        message: text,
+        useUnicode: true,
       });
 
-      const raw = await r.text();
-      console.log('[send-sms] response:', r.status, raw);
+      if (firstTry.err === 0) {
+        results.push({ number: n, attempt: 'unicode', ...firstTry });
+        continue;
+      }
 
-      // XML parse (rychlé regexy pro <err> a <sms_id>)
-      const errMatch = raw.match(/<err>(\d+)<\/err>/);
-      const idMatch  = raw.match(/<sms_id>(\d+)<\/sms_id>/);
-      const errCode  = errMatch ? Number(errMatch[1]) : null;
+      // 2) fallback – bez unicode, zpráva převedená do ASCII (bez diakritiky) + bez \n
+      const asciiText = toAsciiFallback(text);
+      const secondTry = await sendOne({
+        endpoint,
+        login: LOGIN,
+        password: PASSWORD,
+        number: n,
+        message: asciiText,
+        useUnicode: false,
+      });
 
       results.push({
         number: n,
-        http: r.status,
-        raw,
-        err: errCode,
-        errMessage: errCode != null ? (ERR_MAP[errCode] || 'Neznámá chyba') : 'Neznámá odpověď',
-        sms_id: idMatch ? idMatch[1] : null
+        attempt: 'fallback-ascii',
+        firstTry,
+        ...secondTry,
       });
     }
 
-    const ok = results.every(r => r.err === 0);
-    return res.status(ok ? 200 : 200).json({ ok, results });
+    const ok = results.every(r => (r.err === 0) || (r.firstTry && r.firstTry.err === 0));
+    return res.status(200).json({ ok, results });
   } catch (e) {
     console.error('[send-sms] ERROR', e);
     return res.status(500).json({ ok: false, error: e.message });
