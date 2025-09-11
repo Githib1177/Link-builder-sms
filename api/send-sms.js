@@ -81,7 +81,8 @@ export default async function handler(req, res) {
 
   if (numbers.length === 0) return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
 
-  const endpoint = 'https://smsbrana.cz/smsconnect/http.php';
+  const endpoint = 'https://www.smsbrana.cz/smsconnect/http.php';
+
 
   try {
     const results = [];
@@ -125,3 +126,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 }
+
