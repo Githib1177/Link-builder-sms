@@ -1,20 +1,17 @@
 // api/send-sms.js
 
-// --- Pomocné funkce ---
+// ---------- Pomocné funkce ----------
 function stripDiacritics(s) {
   if (!s) return '';
-  // odstraní diakritiku a nahradí nové řádky mezerou
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[\r\n]+/g, ' ').trim();
 }
 function toUCS2Hex(s) {
-  // UCS-2 (BE) → hex string (např. "0044006F0062..." pro "Dob...")
   let hex = '';
   for (const ch of s) {
     const code = ch.codePointAt(0);
-    if (code <= 0xFFFF) {
+    if (code <= 0xffff) {
       hex += code.toString(16).padStart(4, '0');
     } else {
-      // převod na surrogate pair
       const cp = code - 0x10000;
       const hi = 0xd800 + (cp >> 10);
       const lo = 0xdc00 + (cp & 0x3ff);
@@ -32,46 +29,125 @@ const ERR_MAP = {
   0: 'OK',
   1: 'Neznámá chyba',
   2: 'Neplatný login',
-  3: 'Neplatný hash/password',
+  3: 'Neplatný hash/heslo',
   4: 'Neplatný time',
   5: 'Nepovolená IP',
-  6: 'Neplatný název akce / parametry',
+  6: 'Neplatná akce / parametry / kódování',
   7: 'Salt již použit',
   8: 'Chyba DB',
   9: 'Nedostatečný kredit',
-  10: 'Neplatné číslo příjemce',
+  10: 'Neplatné číslo',
   11: 'Chyba odeslání',
   12: 'Chybný parametr',
 };
 
-// --- Odeslání jedné SMS na jeden endpoint ---
-async function sendOne({ endpoint, login, password, number, params }) {
-  const body = new URLSearchParams({
-    login,
-    password,
-    action: 'send_sms',
-    number,
-    ...params,
-  }).toString();
+// ---------- Nízká úroveň: GET/POST volání ----------
+async function callGateway({ method, endpoint, query, body }) {
+  let url = endpoint;
+  const headers = {};
 
-  console.log('[send-sms] request:', body);
+  if (method === 'GET') {
+    url += (endpoint.includes('?') ? '&' : '?') + new URLSearchParams(query).toString();
+  } else {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
 
-  const r = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
+  console.log('[send-sms] fetch', { method, endpoint, query: method === 'GET' ? query : undefined, body: method === 'POST' ? body : undefined });
+
+  const r = await fetch(url, {
+    method,
+    headers,
+    body: method === 'POST' ? new URLSearchParams(body).toString() : undefined,
   });
 
   const raw = await r.text();
-  console.log('[send-sms] response:', r.status, raw);
+  console.log('[send-sms] response', { status: r.status, raw });
 
   const parsed = parseXml(raw);
-  return {
-    http: r.status,
-    raw,
-    ...parsed,
-    errMessage: parsed.err != null ? (ERR_MAP[parsed.err] || 'Neznámá chyba') : 'Neznámá odpověď',
-  };
+  return { http: r.status, raw, ...parsed, errMessage: parsed.err != null ? (ERR_MAP[parsed.err] || 'Neznámá chyba') : 'Neznámá odpověď' };
+}
+
+// ---------- Odeslání jedné SMS s více strategiemi ----------
+async function sendStrategies({ login, password, number, text }) {
+  // Připravíme varianty textu
+  const plain = String(text).replace(/[\r\n]+/g, ' ').trim();  // bez \n
+  const ascii = stripDiacritics(plain);
+  const ucs2hex = toUCS2Hex(plain);
+
+  // Endpoints a pořadí strategií:
+  const ENDPOINTS = [
+    'https://www.smsbrana.cz/smsconnect/http.php',
+    'https://api.smsbrana.cz/smsconnect/http.php',
+  ];
+
+  // 1) GET + ASCII (to je nejblíž tvému ručnímu testu, který fungoval)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'GET',
+      endpoint: ep,
+      query: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        message: ascii,
+      },
+    });
+    if (res.err === 0) return { attempt: 'GET-ascii', endpoint: ep, ...res };
+  }
+
+  // 2) GET + UCS2 (data_code=ucs2 + hex)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'GET',
+      endpoint: ep,
+      query: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        data_code: 'ucs2',
+        message: ucs2hex,
+      },
+    });
+    if (res.err === 0) return { attempt: 'GET-ucs2hex', endpoint: ep, ...res };
+  }
+
+  // 3) POST + ASCII (kdyby náhodou)
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'POST',
+      endpoint: ep,
+      body: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        message: ascii,
+      },
+    });
+    if (res.err === 0) return { attempt: 'POST-ascii', endpoint: ep, ...res };
+  }
+
+  // 4) POST + UCS2
+  for (const ep of ENDPOINTS) {
+    const res = await callGateway({
+      method: 'POST',
+      endpoint: ep,
+      body: {
+        action: 'send_sms',
+        login,
+        password,
+        number,
+        data_code: 'ucs2',
+        message: ucs2hex,
+      },
+    });
+    if (res.err === 0) return { attempt: 'POST-ucs2hex', endpoint: ep, ...res };
+  }
+
+  // Nic neprošlo → vrať poslední výsledek (pro diagnostiku)
+  return { attempt: 'none', endpoint: ENDPOINTS[0], err: 6, errMessage: ERR_MAP[6] };
 }
 
 export default async function handler(req, res) {
@@ -88,61 +164,23 @@ export default async function handler(req, res) {
   console.log('[send-sms] env loaded:', { hasLogin: !!LOGIN, hasPass: !!PASSWORD });
   if (!LOGIN || !PASSWORD) return res.status(500).json({ ok: false, error: 'Missing SMS_LOGIN or SMS_PASSWORD env' });
 
-  // Normalizace cílových čísel
+  // Normalizace čísel: ponecháme číslice/+, zahodíme + a whitespace
   const toList = Array.isArray(to) ? to : String(to).split(/[,\n;]+/);
   const numbers = toList
     .map(x => String(x).trim())
     .filter(Boolean)
-    .map(x => x.replace(/[^\d+]/g, '')) // ponecháme číslice a +
-    .map(x => x.replace(/^\+/, ''))     // bez +
+    .map(x => x.replace(/[^\d+]/g, ''))
+    .map(x => x.replace(/^\+/, ''))
     .filter(x => /^\d{8,15}$/.test(x));
 
   if (numbers.length === 0) return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
 
-  // Připravíme texty (bez \n kvůli některým instalacím)
-  const plain = String(text).replace(/[\r\n]+/g, ' ').trim();
-  const ucs2hex = toUCS2Hex(plain);
-  const ascii   = stripDiacritics(plain);
-
-  const ENDPOINTS = [
-    'https://api.smsbrana.cz/smsconnect/http.php',
-    'https://www.smsbrana.cz/smsconnect/http.php',
-  ];
-
   try {
     const results = [];
-
     for (const n of numbers) {
-      let sent = null;
-
-      // 1) UCS2 varianta: data_code=ucs2 + message=hex
-      for (const ep of ENDPOINTS) {
-        const r1 = await sendOne({
-          endpoint: ep,
-          login: LOGIN,
-          password: PASSWORD,
-          number: n,
-          params: { data_code: 'ucs2', message: ucs2hex },
-        });
-        results.push({ number: n, attempt: 'ucs2-hex', endpoint: ep, ...r1 });
-        if (r1.err === 0) { sent = r1; break; }
-      }
-      if (sent) continue;
-
-      // 2) Fallback: čisté ASCII bez diakritiky (7bit)
-      for (const ep of ENDPOINTS) {
-        const r2 = await sendOne({
-          endpoint: ep,
-          login: LOGIN,
-          password: PASSWORD,
-          number: n,
-          params: { message: ascii },
-        });
-        results.push({ number: n, attempt: 'ascii-7bit', endpoint: ep, ...r2 });
-        if (r2.err === 0) { sent = r2; break; }
-      }
+      const r = await sendStrategies({ login: LOGIN, password: PASSWORD, number: n, text });
+      results.push({ number: n, ...r });
     }
-
     const ok = results.some(r => r.err === 0);
     return res.status(200).json({ ok, results });
   } catch (e) {
