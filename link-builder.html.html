@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <title>Falconi – Link Builder pro check-in</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <!-- Ikony & PWA -->
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="linkbuilder-180.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a4a84">
+
+  <style>
+    :root{--brand:#1a4a84;--accent:#d2b573;--ink:#2d2d2d;--card:#fff;--bg:#f7f8fa}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    h1{margin:.2rem 0 .8rem;font-size:1.8rem;color:var(--brand)}
+    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.08);padding:18px;margin:16px 0}
+    .grid{display:grid;gap:12px}
+    @media(min-width:900px){.grid.two{grid-template-columns:1fr 1fr}}
+    label{font-weight:600}
+    input,textarea{width:100%;padding:10px 12px;border:1px solid #d9dfe6;border-radius:10px;font-size:14px;box-sizing:border-box}
+    textarea{min-height:90px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
+    button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
+    .btn{background:var(--brand);color:#fff}
+    .btn-alt{background:var(--accent);color:#1a1a1a}
+    .btn-ghost{background:#fff;border:2px solid var(--brand);color:var(--brand)}
+    .out{background:#0b13241a;border:1px dashed #b9c1cc;border-radius:10px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+    .muted{color:#666;font-size:.92rem}
+    .small{font-size:.88rem}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;margin-left:6px;font-size:.8rem}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="text-align:center; margin-bottom:20px;">
+      <img src="https://files.previo.cz/85/www/logo.png" alt="Pension Falconi" style="max-width:200px; height:auto; display:block; margin:0 auto 10px;" />
+      <p style="font-size:1.2rem; font-weight:600; color:#1a4a84; margin:0;">Link Builder pro check-in</p>
+    </div>
+    <h1>Falconi – Link Builder pro check-in <span class="pill">CZ / EN / DE</span></h1>
+
+    <!-- ZÁKLADNÍ NASTAVENÍ -->
+    <div class="card">
+      <div class="grid two">
+        <div>
+          <label for="base">Základní doména</label>
+          <input id="base" type="url" value="https://www.pensionfalconi.cz" placeholder="https://www.pensionfalconi.cz" />
+        </div>
+        <div>
+          <label for="guest">Jméno hosta (volitelné)</label>
+          <input id="guest" placeholder="Např. Jan Novák" />
+          <div class="row">
+            <input type="checkbox" id="isFemale" />
+            <label for="isFemale" class="small">Host je žena (oslovovat „Paní“)</label>
+          </div>
+          <div class="muted small">Pokud vyplníte jméno, v CZ zprávách použiji „Paní/Pane + PŘÍJMENÍ“.</div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label for="pathCZ">Cesta CZ</label>
+          <input id="pathCZ" value="/cs/checkin/" />
+          <div class="muted small">Výsledný tvar: <code>{base}{path}?...</code></div>
+        </div>
+        <div>
+          <label for="pathEN">Cesta EN</label>
+          <input id="pathEN" value="/en/checkin/" />
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label for="pathDE">Cesta DE</label>
+          <input id="pathDE" value="/de/checkin/" />
+        </div>
+        <div>
+          <label for="alfBase" title="info">Základ URL Alfréda</label>
+          <input id="alfBase" value="https://alfred.previo.app/login/" />
+        </div>
+      </div>
+    </div>
+
+    <!-- KÓDY -->
+    <div class="card">
+      <div class="grid two">
+        <div>
+          <label for="alf">Alfréd kód (např. UMTQWZ) nebo celé URL</label>
+          <input id="alf" placeholder="UMTQWZ nebo https://alfred.previo.app/login/UMTQWZ" />
+        </div>
+        <div>
+          <label for="box">Kód ke schránce (box)</label>
+          <input id="box" placeholder="5678" />
+        </div>
+      </div>
+
+      <!-- Stavové přepínače -->
+      <div style="margin-top:10px">
+        <label style="display:block;margin-bottom:6px;">
+          <input type="checkbox" id="done"> Check-in již dokončen (přidat <code>done=1</code>)
+        </label>
+        <label style="display:block;">
+          <input type="checkbox" id="unpaid"> Platba zbývá (částečná/žádná)
+        </label>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="gen">Vygenerovat odkazy</button>
+        <button class="btn-ghost" id="clear">Vymazat</button>
+        <button class="btn-alt" id="save">Zapamatovat nastavení</button>
+      </div>
+      <div class="muted small" style="margin-top:6px">Do URL se přidají jen ty parametry, které vyplníte / zaškrtnete.</div>
+    </div>
+
+    <!-- VÝSTUPY: ODKAZY -->
+    <div class="card">
+      <h3 style="margin-top:0;color:#1a4a84">Odkazy</h3>
+      <div class="grid two">
+        <div>
+          <label>CZ URL</label>
+          <div id="urlCZ" class="out"></div>
+          <div class="row">
+            <button class="btn" data-copy="#urlCZ">Kopírovat CZ</button>
+            <a class="btn-ghost" id="openCZ" href="#" target="_blank" rel="noopener">Otevřít</a>
+          </div>
+        </div>
+        <div>
+          <label>EN URL</label>
+          <div id="urlEN" class="out"></div>
+          <div class="row">
+            <button class="btn" data-copy="#urlEN">Kopírovat EN</button>
+            <a class="btn-ghost" id="openEN" href="#" target="_blank" rel="noopener">Otevřít</a>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label>DE URL</label>
+          <div id="urlDE" class="out"></div>
+          <div class="row">
+            <button class="btn" data-copy="#urlDE">Kopírovat DE</button>
+            <a class="btn-ghost" id="openDE" href="#" target="_blank" rel="noopener">Otevřít</a>
+          </div>
+        </div>
+        <div>
+          <label>Alfréd – přímý odkaz</label>
+          <div id="urlALF" class="out"></div>
+          <div class="row">
+            <button class="btn" data-copy="#urlALF">Kopírovat ALF</button>
+            <a class="btn-ghost" id="openALF" href="#" target="_blank" rel="noopener">Otevřít</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VÝSTUPY: SMS / EMAIL -->
+    <div class="card">
+      <h3 style="margin-top:0;color:#1a4a84">Texty pro odeslání</h3>
+      <div class="grid two">
+        <div>
+          <label>SMS – CZ</label>
+          <textarea id="smsCZ"></textarea>
+          <div class="row"><button class="btn" data-copy="#smsCZ">Kopírovat SMS CZ</button></div>
+        </div>
+        <div>
+          <label>SMS – EN</label>
+          <textarea id="smsEN"></textarea>
+          <div class="row"><button class="btn" data-copy="#smsEN">Kopírovat SMS EN</button></div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label>SMS – DE</label>
+          <textarea id="smsDE"></textarea>
+          <div class="row"><button class="btn" data-copy="#smsDE">Kopírovat SMS DE</button></div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label>E-mail – CZ</label>
+          <textarea id="mailCZ"></textarea>
+          <div class="row"><button class="btn" data-copy="#mailCZ">Kopírovat e-mail CZ</button></div>
+        </div>
+        <div>
+          <label>E-mail – EN</label>
+          <textarea id="mailEN"></textarea>
+          <div class="row"><button class="btn" data-copy="#mailEN">Kopírovat e-mail EN</button></div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:10px">
+        <div>
+          <label>E-mail – DE</label>
+          <textarea id="mailDE"></textarea>
+          <div class="row"><button class="btn" data-copy="#mailDE">Kopírovat e-mail DE</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOVÉ: ODESLAT SMS přes SMSbrana.cz -->
+    <div class="card">
+      <h3 style="margin-top:0;color:#1a4a84">Odeslat SMS</h3>
+      <div class="grid two">
+        <div>
+          <label for="smsTo">Telefon (1 nebo více, oddělte čárkou)</label>
+          <input id="smsTo" placeholder="+420721516894, +4207…" />
+          <div class="muted small">Použijte mezinárodní formát (např. +420…).</div>
+        </div>
+        <div>
+          <label for="smsLang">Vybrat text</label>
+          <select id="smsLang">
+            <option value="cz">SMS – CZ</option>
+            <option value="en">SMS – EN</option>
+            <option value="de">SMS – DE</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="sendSMS">Odeslat SMS</button>
+        <span id="smsStatus" class="muted small"></span>
+      </div>
+    </div>
+
+    <p class="muted">Ulož jako <b>link-builder.html</b>. Nastavení se uchová v tomto prohlížeči (localStorage).</p>
+  </div>
+
+  <script>
+    const Q = id => document.querySelector(id);
+    const enc = v => encodeURIComponent(v.trim());
+
+    function buildUrl(base, path, params){
+      const b = (base || '').replace(/\/+$/,'');
+      const p = (path || '/').replace(/^\/?/, '/');
+      const q = Object.entries(params)
+        .filter(([,v]) => v && String(v).trim()!=='')
+        .map(([k,v]) => k + '=' + enc(String(v)))
+        .join('&');
+      return b + p + (q ? ('?'+q) : '');
+    }
+
+    function deriveAlfUrl(alfInput){
+      if(!alfInput) return '';
+      const v = alfInput.trim();
+      if(/^https?:\/\//i.test(v)) return v;
+      return 'https://alfred.previo.app/login/' + encodeURIComponent(v);
+    }
+
+    function getLastName(full){
+      if(!full) return '';
+      const cleaned = full.replace(/\b(Bc\.|Mgr\.|Ing\.|PhDr\.|MUDr\.|JUDr\.|DiS\.)\b/gi,'').trim();
+      const parts = cleaned.split(/\s+/);
+      return parts.length ? parts[parts.length-1].replace(/[.,]+$/,'') : '';
+    }
+
+    function czGreeting(){
+      const guest = Q('#guest').value.trim();
+      const isFemale = Q('#isFemale').checked;
+      const ln = getLastName(guest);
+      if(!ln) return 'Dobrý den,';
+      const honorific = isFemale ? 'Paní' : 'Pane';
+      return `Dobrý den, ${honorific} ${ln},`;
+    }
+
+    function gen(){
+      const base   = Q('#base').value || 'https://www.pensionfalconi.cz';
+      const pathCZ = Q('#pathCZ').value || '/cs/checkin/';
+      const pathEN = Q('#pathEN').value || '/en/checkin/';
+      const pathDE = Q('#pathDE').value || '/de/checkin/';
+
+      const guest  = Q('#guest').value || '';
+      const isFemale = Q('#isFemale').checked;
+
+      const alfIn  = Q('#alf').value.trim();
+      const box    = Q('#box').value.trim();
+      const done   = Q('#done').checked;
+      const unpaid = Q('#unpaid').checked;
+
+      const alfFull = deriveAlfUrl(alfIn);
+
+      const params = {};
+      if(alfFull) params.alf = alfFull;
+      if(box)     params.box = box;
+      if(done)    params.done = 1;
+      if(unpaid)  params.unpaid = 1;
+
+      const urlCZ = buildUrl(base, pathCZ, params);
+      const urlEN = buildUrl(base, pathEN, params);
+      const urlDE = buildUrl(base, pathDE, params);
+
+      Q('#urlCZ').textContent = urlCZ;
+      Q('#urlEN').textContent = urlEN;
+      Q('#urlDE').textContent = urlDE;
+
+      Q('#urlALF').textContent = alfFull;
+      Q('#openCZ').href  = urlCZ;
+      Q('#openEN').href  = urlEN;
+      Q('#openDE').href  = urlDE;
+      Q('#openALF').href = alfFull || '#';
+
+      const lastName = getLastName(guest);
+      const czHello = czGreeting();
+
+      // Texty – priorita: unpaid > done > default
+      const czLine = unpaid
+        ? 'check-in je hotový, zbývá doplatit. Pokyny:'
+        : (done ? 'check-in je hotový. Pokyny:' : 'prosíme o online check-in a platbu. Pokyny:');
+
+      const enName = lastName ? (isFemale ? `Ms ${lastName}` : `Mr ${lastName}`) : 'Guest';
+      const enLine = unpaid
+        ? 'your check-in is completed; payment is still due. Instructions:'
+        : (done ? 'your check-in is completed. Instructions:' : 'please complete your online check-in and payment. Instructions:');
+
+      const deName = lastName ? (isFemale ? `Frau ${lastName}` : `Herr ${lastName}`) : 'Gast';
+      const deLine = unpaid
+        ? 'Ihr Check-in ist abgeschlossen; die Zahlung steht noch aus. Anweisungen:'
+        : (done ? 'Ihr Check-in wurde bereits abgeschlossen. Anweisungen:' : 'bitte führen Sie den Online-Check-in und die Zahlung durch. Anweisungen:');
+
+      Q('#smsCZ').value = `${czHello}
+${czLine}
+${urlCZ}`;
+
+      Q('#smsEN').value = `Dear ${enName},
+${enLine}
+${urlEN}`;
+
+      Q('#smsDE').value = `Guten Tag ${deName},
+${deLine}
+${urlDE}`;
+
+      Q('#mailCZ').value =
+`${czHello}
+
+${unpaid ? 'děkujeme za dokončení online check-inu. Zbývá uhradit platbu.' : (done ? 'děkujeme za dokončení online check-inu.' : 'prosíme o dokončení online check-inu a platby.')}
+Pokyny najdete zde: ${urlCZ}
+
+Recepce: +420 721 516 894 | E-mail: recepce@falconicz`;
+
+      Q('#mailEN').value =
+`Dear ${enName},
+
+${unpaid ? 'thank you for completing the online check-in. Payment is still due.' : (done ? 'thank you for completing the online check-in.' : 'please complete your online check-in and payment.')}
+Find the instructions here: ${urlEN}
+
+Reception: +420 721 516 894 | Email: recepce@falconicz`;
+
+      Q('#mailDE').value =
+`Guten Tag ${deName},
+
+${unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung steht noch aus.' : (done ? 'vielen Dank für die Durchführung des Online-Check-ins.' : 'bitte führen Sie den Online-Check-in und die Zahlung durch.')}
+Die Anweisungen finden Sie hier: ${urlDE}
+
+Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
+    }
+
+    function copySel(sel){
+      const el = Q(sel);
+      if(!el) return;
+      const txt = el.value !== undefined ? el.value : el.textContent;
+      navigator.clipboard.writeText(txt).catch(()=>{});
+    }
+
+    function save(){
+      const keys = ['base','pathCZ','pathEN','pathDE','alfBase'];
+      const data = {};
+      keys.forEach(k => data[k] = Q('#'+k).value);
+      localStorage.setItem('falconi_linkbuilder', JSON.stringify(data));
+    }
+    function load(){
+      try{
+        const raw = localStorage.getItem('falconi_linkbuilder');
+        if(!raw) return;
+        const d = JSON.parse(raw);
+        for(const k in d){ if(Q('#'+k)) Q('#'+k).value = d[k]; }
+      }catch(e){}
+    }
+
+    // ===== NOVÉ: Odesílání SMS přes backend /api/send-sms =====
+    function normalizePhones(raw){
+      return raw.split(/[,\n;]/).map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s.replace(/[^+\d]/g,''))
+        .filter(s => /^\+?\d{8,15}$/.test(s));
+    }
+    function pickSmsText(lang){
+      const map = { cz:'#smsCZ', en:'#smsEN', de:'#smsDE' };
+      const el = Q(map[lang] || '#smsCZ');
+      return (el && el.value) ? el.value.trim() : '';
+    }
+    function isUnicodeSms(s){
+      const gsm = /^[\x00-\x7F€£¥ìòÇØøÅåÄÖÑÜäöñüÆæßÉ^{}\\\[~\]|€@!#$%&'()*+,\-./0-9:;<=>? A-Za-z"]*$/;
+      return !gsm.test(s);
+    }
+    async function sendSms(){
+      const toRaw = Q('#smsTo').value.trim();
+      const lang  = Q('#smsLang').value;
+      const text  = pickSmsText(lang);
+      const statusEl = Q('#smsStatus');
+
+      if(!toRaw){ statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
+      if(!text){ statusEl.textContent = 'Nejprve vygeneruj text SMS (tlačítko Vygenerovat odkazy).'; return; }
+
+      const numbers = normalizePhones(toRaw);
+      if(numbers.length === 0){ statusEl.textContent = 'Žádné validní číslo (použij +420…).'; return; }
+
+      const unicode = isUnicodeSms(text);
+      const singleLimit = unicode ? 70 : 160;
+      const concatLimit = unicode ? 67 : 153;
+      if(text.length > singleLimit){
+        statusEl.textContent = `Odesílám… (zpráva bude ve ${Math.ceil(text.length/concatLimit)} dílech)`;
+      } else {
+        statusEl.textContent = 'Odesílám…';
+      }
+
+      try{
+        const resp = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ to: numbers, text })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if(!resp.ok || !data.ok){
+          throw new Error(data.error || data.detail || 'Chyba při odesílání');
+        }
+        statusEl.textContent = '✓ SMS odeslána.';
+      }catch(e){
+        statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
+      }
+    }
+
+    document.addEventListener('click', e=>{
+      const t = e.target;
+      if(t.id === 'gen') gen();
+      if(t.id === 'clear'){
+        ['alf','box','guest','done','unpaid','isFemale'].forEach(id => {
+          const el = Q('#'+id);
+          if(!el) return;
+          if(el.type==='checkbox') el.checked=false; else el.value='';
+        });
+        gen();
+      }
+      if(t.id === 'save') save();
+      if(t.dataset.copy) copySel(t.dataset.copy);
+      if(t.id === 'sendSMS') sendSms();
+    });
+
+    load(); gen();
+  </script>
+
+  <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
