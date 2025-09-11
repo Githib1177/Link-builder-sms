@@ -1,18 +1,12 @@
 // api/send-sms.js
 
-// Pomocná funkce na odstranění diakritiky a „neGSM“ znaků pro fallback
 function toAsciiFallback(s) {
   if (!s) return '';
-  // odstraní diakritiku
   let out = s.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-  // nahradí zalomení řádků mezerou (někdy vadí)
-  out = out.replace(/[\r\n]+/g, ' ');
-  // ořeže bílé znaky kolem
-  out = out.trim();
+  out = out.replace(/[\r\n]+/g, ' ').trim();
   return out;
 }
 
-// jednoduché mapování chyb z XML
 const ERR_MAP = {
   0: 'OK',
   1: 'Chyba přihlášení (login/heslo)',
@@ -24,7 +18,6 @@ const ERR_MAP = {
   7: 'Systémová chyba',
 };
 
-// rychlý parser <err> a <sms_id> z XML
 function parseXml(raw) {
   const errMatch = raw.match(/<err>(\d+)<\/err>/);
   const idMatch  = raw.match(/<sms_id>(\d+)<\/sms_id>/);
@@ -34,7 +27,6 @@ function parseXml(raw) {
   };
 }
 
-// odeslání jedné SMS s volitelným unicode flagem
 async function sendOne({ endpoint, login, password, number, message, useUnicode }) {
   const params = new URLSearchParams();
   params.set('login', login);
@@ -66,55 +58,44 @@ async function sendOne({ endpoint, login, password, number, message, useUnicode 
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { to, text } = req.body || {};
   console.log('[send-sms] body:', { to, text });
 
-  if (!text || !String(text).trim()) {
-    return res.status(400).json({ ok: false, error: 'Missing text' });
-  }
-  if (!to || (Array.isArray(to) && to.length === 0)) {
-    return res.status(400).json({ ok: false, error: 'Missing recipient number(s)' });
-  }
+  if (!text || !String(text).trim()) return res.status(400).json({ ok: false, error: 'Missing text' });
+  if (!to || (Array.isArray(to) && to.length === 0)) return res.status(400).json({ ok: false, error: 'Missing recipient number(s)' });
 
   const LOGIN = process.env.SMS_LOGIN;
   const PASSWORD = process.env.SMS_PASSWORD;
   console.log('[send-sms] env loaded:', { hasLogin: !!LOGIN, hasPass: !!PASSWORD });
+  if (!LOGIN || !PASSWORD) return res.status(500).json({ ok: false, error: 'Missing SMS_LOGIN or SMS_PASSWORD env' });
 
-  if (!LOGIN || !PASSWORD) {
-    return res.status(500).json({ ok: false, error: 'Missing SMS_LOGIN or SMS_PASSWORD env' });
-  }
-
-  // normalizace čísel (odstraníme vše kromě číslic a +, a + zahodíme – SMSbrána očekává bez plusu)
   const toList = Array.isArray(to) ? to : String(to).split(/[,\n;]+/);
   const numbers = toList
     .map(x => String(x).trim())
     .filter(Boolean)
-    .map(x => x.replace(/[^\d+]/g, '')) // jen číslice a +
-    .map(x => x.replace(/^\+/, ''))     // bez +
+    .map(x => x.replace(/[^\d+]/g, ''))
+    .map(x => x.replace(/^\+/, ''))  // bez +
     .filter(x => /^\d{8,15}$/.test(x));
 
-  if (numbers.length === 0) {
-    return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
-  }
+  if (numbers.length === 0) return res.status(400).json({ ok: false, error: 'No valid numbers after normalization' });
 
-  // primární endpoint z praxe (ruční testy ti fungovaly na doméně bez "api.")
   const endpoint = 'https://smsbrana.cz/smsconnect/http.php';
 
   try {
     const results = [];
+    // Text bez zalomení (některým instalacím vadí \n) – pošleme jej v unicode i fallbacku
+    const textNoNL = String(text).replace(/[\r\n]+/g, ' ').trim();
 
     for (const n of numbers) {
-      // 1) pokus s unicode=1 (pro diakritiku)
+      // 1) Unicode pokus
       const firstTry = await sendOne({
         endpoint,
         login: LOGIN,
         password: PASSWORD,
         number: n,
-        message: text,
+        message: textNoNL,
         useUnicode: true,
       });
 
@@ -123,8 +104,8 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // 2) fallback – bez unicode, zpráva převedená do ASCII (bez diakritiky) + bez \n
-      const asciiText = toAsciiFallback(text);
+      // 2) Fallback: ASCII bez diakritiky, bez unicode
+      const asciiText = toAsciiFallback(textNoNL);
       const secondTry = await sendOne({
         endpoint,
         login: LOGIN,
@@ -134,15 +115,10 @@ export default async function handler(req, res) {
         useUnicode: false,
       });
 
-      results.push({
-        number: n,
-        attempt: 'fallback-ascii',
-        firstTry,
-        ...secondTry,
-      });
+      results.push({ number: n, attempt: 'fallback-ascii', firstTry, ...secondTry });
     }
 
-    const ok = results.every(r => (r.err === 0) || (r.firstTry && r.firstTry.err === 0));
+    const ok = results.some(r => r.err === 0 || (r.firstTry && r.firstTry.err === 0));
     return res.status(200).json({ ok, results });
   } catch (e) {
     console.error('[send-sms] ERROR', e);
