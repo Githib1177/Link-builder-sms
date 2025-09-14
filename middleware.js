@@ -1,35 +1,30 @@
-// middleware.js — Basic Auth pro celý web (bez Next.js importů)
+// middleware.js — chraň všechno kromě /api (tam používáme Bearer token)
+import { NextResponse } from 'next/server';
+
 export const config = {
-  // uplatní se na všechny cesty; když chceš něco vynechat, uprav matcher
-  matcher: ['/(.*)'],
+  matcher: [
+    // propustí /api a statické soubory
+    '/((?!api/|_next/|favicon.ico|manifest.json|linkbuilder-180.png|linkbuilder-192.png|linkbuilder-512.png).*)',
+  ],
 };
 
-// Edge runtime (doporučené u middleware)
-export const runtime = 'edge';
+export function middleware(req) {
+  const USER = process.env.BASIC_AUTH_USER || 'falconi';
+  const PASS = process.env.BASIC_AUTH_PASS || 'heslo';
 
-export default function middleware(req) {
-  // Přihlašovací údaje (zatím natvrdo)
-  const USER = 'falconi';
-  const PASS = 'Falconi1';
+  if (!USER || !PASS) return NextResponse.next();
 
-  const auth = req.headers.get('authorization') || '';
-  const [scheme, encoded] = auth.split(' ');
-
-  // Kontrola Basic auth
-  if (scheme === 'Basic' && encoded) {
-    // atob existuje v Edge runtime
-    const [u, p] = atob(encoded).split(':');
-    if (u === USER && p === PASS) {
-      // OK -> propustit dál (nic nevracíme)
-      return;
-    }
+  const hdr = req.headers.get('authorization') || '';
+  // očekáváme "Basic base64(user:pass)"
+  if (hdr.startsWith('Basic ')) {
+    try {
+      const [u, p] = atob(hdr.slice(6)).split(':');
+      if (u === USER && p === PASS) return NextResponse.next();
+    } catch (_) { /* ignore decode errors */ }
   }
 
-  // Neověřeno -> vyžádat přihlášení
-  return new Response('Authentication required', {
+  return new NextResponse('Authentication required', {
     status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Falconi Link Builder"',
-    },
+    headers: { 'WWW-Authenticate': 'Basic realm="Secure Area"' },
   });
 }
