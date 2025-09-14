@@ -1,0 +1,7 @@
+{
+  "name": "falconi-link-builder",
+  "private": true,
+  "dependencies": {
+    "@neondatabase/serverless": "latest"
+  }
+}
