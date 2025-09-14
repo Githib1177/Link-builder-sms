@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 
 export const config = {
   matcher: [
-    // propustí /api a statické soubory
-    '/((?!api/|_next/|favicon.ico|manifest.json|linkbuilder-180.png|linkbuilder-192.png|linkbuilder-512.png).*)',
+    // povolit /api a statické soubory bez Basic Auth
+    '/((?!api/|_next/|favicon.ico|manifest.json|linkbuilder-180.png|linkbuilder-192.png|linkbuilder-512.png|sw.js).*)',
   ],
 };
 
@@ -15,12 +15,12 @@ export function middleware(req) {
   if (!USER || !PASS) return NextResponse.next();
 
   const hdr = req.headers.get('authorization') || '';
-  // očekáváme "Basic base64(user:pass)"
+  // očekáváme "Basic base64(user:pass)"; v Edge je k dispozici atob()
   if (hdr.startsWith('Basic ')) {
     try {
       const [u, p] = atob(hdr.slice(6)).split(':');
       if (u === USER && p === PASS) return NextResponse.next();
-    } catch (_) { /* ignore decode errors */ }
+    } catch (_) {}
   }
 
   return new NextResponse('Authentication required', {
