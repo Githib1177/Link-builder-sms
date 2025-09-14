@@ -223,6 +223,26 @@
       </div>
     </div>
 
+    <!-- HISTORIE SMS (CLOUD) -->
+    <div class="card">
+      <h3 style="margin-top:0;color:#1a4a84">Historie odeslaných SMS</h3>
+      <div class="grid two">
+        <div>
+          <label>API základna</label>
+          <input id="histApi" value="/api" />
+        </div>
+        <div>
+          <label>Přístupový token</label>
+          <input id="histToken" placeholder="SMSHIST_TOKEN" />
+          <div class="small muted">Uloží se do tohoto prohlížeče (localStorage).</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="histLoad">Načíst historii</button>
+      </div>
+      <div id="histTable" class="out" style="max-height:260px;overflow:auto;white-space:normal"></div>
+    </div>
+
     <p class="muted">Ulož jako <b>link-builder.html</b>. Nastavení se uchová v tomto prohlížeči (localStorage).</p>
   </div>
 
@@ -348,7 +368,7 @@ Reception: +420 721 516 894 | Email: recepce@falconicz`;
       Q('#mailDE').value =
 `Guten Tag ${deName},
 
-${unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung steht noch aus.' : (done ? 'vielen Dank für die Durchführung des Online-Check-ins.' : 'bitte führen Sie den Online-Check-in und die Zahlung durch.')}
+${unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung steht noch aus.' : 'vielen Dank für die Durchführung des Online-Check-ins.'}
 Die Anweisungen finden Sie hier: ${urlDE}
 
 Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
@@ -392,6 +412,74 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       const gsm = /^[\x00-\x7F€£¥ìòÇØøÅåÄÖÑÜäöñüÆæßÉ^{}\\\[~\]|€@!#$%&'()*+,\-./0-9:;<=>? A-Za-z"]*$/;
       return !gsm.test(s);
     }
+
+    // ===== HISTORIE SMS (cloud sync) =====
+    function histCfg(){
+      const api = (Q('#histApi')?.value || '/api').replace(/\/+$/,'');
+      const token = (Q('#histToken')?.value || '').trim();
+      try{ localStorage.setItem('falconi_sms_cloud', JSON.stringify({api, token})); }catch(e){}
+      return { api, token };
+    }
+    function loadHistCfg(){
+      try{
+        const raw = localStorage.getItem('falconi_sms_cloud');
+        if(!raw) return;
+        const d = JSON.parse(raw);
+        if(d.api && Q('#histApi')) Q('#histApi').value = d.api;
+        if(d.token && Q('#histToken')) Q('#histToken').value = d.token;
+      }catch(e){}
+    }
+    function renderHistory(rows){
+      const el = Q('#histTable'); if(!el) return;
+      if(!rows || rows.length===0){ el.innerHTML = '<span class="muted">Zatím nic.</span>'; return; }
+      const esc = s => String(s||'').replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[m]));
+      const html = [
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">',
+        '<thead><tr>',
+        '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Čas</th>',
+        '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Komu</th>',
+        '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Text</th>',
+        '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Jazyk</th>',
+        '</tr></thead><tbody>'
+      ];
+      rows.forEach(r=>{
+        const dt = new Date(Number(r.ts)||Date.now());
+        html.push(
+          '<tr>',
+          `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${dt.toLocaleString()}</td>`,
+          `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc((r.to||[]).join(', '))}</td>`,
+          `<td style="padding:6px;border-bottom:1px solid #f1f5f9;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.text||'')}</td>`,
+          `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(r.lang||'')}</td>`,
+          '</tr>'
+        );
+      });
+      html.push('</tbody></table>');
+      el.innerHTML = html.join('');
+    }
+    async function loadHistory(){
+      const { api, token } = histCfg();
+      const el = Q('#histTable'); if(el) el.textContent = 'Načítám…';
+      if(!token){ if(el) el.textContent = 'Zadej token.'; return; }
+      try{
+        const r = await fetch(`${api}/sms-history`, { headers: { Authorization: `Bearer ${token}` }});
+        const data = await r.json().catch(()=>[]);
+        renderHistory(Array.isArray(data) ? data : []);
+      }catch(e){
+        if(el) el.textContent = 'Chyba: ' + (e.message || e);
+      }
+    }
+    async function saveHistory(rec){
+      const { api, token } = histCfg();
+      if(!token) return;
+      try{
+        await fetch(`${api}/sms-history`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+          body: JSON.stringify(rec)
+        });
+      }catch(e){ /* ticho */ }
+    }
+
     async function sendSms(){
       const toRaw = Q('#smsTo').value.trim();
       const lang  = Q('#smsLang').value;
@@ -424,6 +512,19 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
           throw new Error(data.error || data.detail || 'Chyba při odesílání');
         }
         statusEl.textContent = '✓ SMS odeslána.';
+
+        // po úspěchu uložit do cloudu (neblokuje UI) a přenačíst tabulku
+        const id = 'sms_' + Date.now();
+        const ts = Date.now();
+        const guest = (Q('#guest')?.value || '').trim();
+        let link = '';
+        if(lang === 'cz') link = Q('#urlCZ').textContent;
+        else if(lang === 'en') link = Q('#urlEN').textContent;
+        else link = Q('#urlDE').textContent;
+
+        saveHistory({ id, ts, guest, lang, to: numbers, text, link })
+          .then(()=>loadHistory())
+          .catch(()=>{});
       }catch(e){
         statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
       }
@@ -443,9 +544,12 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'save') save();
       if(t.dataset.copy) copySel(t.dataset.copy);
       if(t.id === 'sendSMS') sendSms();
+
+      // historie
+      if(t.id === 'histLoad') loadHistory();
     });
 
-    load(); gen();
+    load(); gen(); loadHistCfg();
   </script>
 
   <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
