@@ -241,8 +241,6 @@
 
       <div class="row" style="margin-top:10px">
         <button class="btn" id="sendSMS">Odeslat SMS</button>
-        <!-- NOVÉ tlačítko – poslat jen kód -->
-        <button class="btn-ghost" id="sendCodeOnly" title="Pošle jen kód schránky bez dalších textů">Poslat jen kód</button>
         <span id="smsStatus" class="muted small"></span>
         <span id="boxStatus" class="muted small"></span>
       </div>
@@ -280,8 +278,6 @@
   <script>
     const Q = id => document.querySelector(id);
     const enc = v => encodeURIComponent(v.trim());
-    // NOVÉ: hezké formátování kódu do trojic
-    const prettyBox = c => (String(c||'').replace(/\s+/g,'').match(/.{1,3}/g)||[]).join(' ');
 
     function buildUrl(base, path, params){
       const b = (base || '').replace(/\/+$/,'');
@@ -696,46 +692,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
-    // NOVÉ: Odeslat jen kód schránky (krátká zpráva)
-    async function sendCodeOnly(){
-      const statusEl = Q('#smsStatus');
-      const toRaw = (Q('#smsTo')?.value || '').trim();
-      const numbers = normalizePhones(toRaw);
-      const rawBox = (Q('#box')?.value || '').trim();
-      const lang   = (Q('#smsLang')?.value || 'cz');
-
-      if(!numbers.length){ if(statusEl) statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
-      if(!/^\d{6}$/.test(rawBox)){ if(statusEl) statusEl.textContent = 'Chybí 6místný kód schránky.'; return; }
-
-      const label = lang === 'de' ? 'Schlüsselsafe-Code' : (lang === 'en' ? 'Mailbox code' : 'Kód schránky');
-      const text  = `${label}: ${prettyBox(rawBox)}`;
-
-      try{
-        if(statusEl) statusEl.textContent = 'Odesílám kód…';
-        const resp = await fetch('/api/send-sms', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ to: numbers, text })
-        });
-        const data = await resp.json().catch(()=>({}));
-        if(!resp.ok || !data.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
-        if(statusEl) statusEl.textContent = '✓ Kód odeslán.';
-
-        // uložit do historie (označíme jazyk -code)
-        const id = 'sms_code_' + Date.now();
-        const ts = Date.now();
-        const guest = (Q('#guest')?.value || '').trim();
-        let link = '';
-        const lmap = { cz:'#urlCZ', en:'#urlEN', de:'#urlDE' };
-        const lEl = Q(lmap[lang]);
-        if(lEl) link = lEl.textContent;
-        saveHistory({ id, ts, guest, lang: `${lang}-code`, to: numbers, text, link }).catch(()=>{});
-        loadHistory();
-      }catch(e){
-        if(statusEl) statusEl.textContent = '✗ ' + (e.message || e);
-      }
-    }
-
     // === UI vazby a start ===
     function onLockerInputChanged(){ refreshLockerCmdPreview(); }
 
@@ -753,8 +709,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'save') save();
       if(t.dataset.copy) copySel(t.dataset.copy);
       if(t.id === 'sendSMS') sendSms();
-      // NOVÉ: tlačítko „Poslat jen kód“
-      if(t.id === 'sendCodeOnly') sendCodeOnly();
 
       // historie
       if(t.id === 'histLoad') loadHistory();
@@ -791,3 +745,4 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
   </script>
 </body>
 </html>
+
