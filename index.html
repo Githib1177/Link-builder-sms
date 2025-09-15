@@ -241,7 +241,7 @@
 
       <div class="row" style="margin-top:10px">
         <button class="btn" id="sendSMS">Odeslat SMS</button>
-        <!-- NOVÉ: poslat odkaz na stránku s kódem (bez ukládání do historie) -->
+        <!-- Poslat odkaz na stránku s kódem (ukládá se do historie) -->
         <button class="btn-ghost" id="sendCodesLink" title="Pošle odkaz na stránku s kódem">Poslat odkaz na kódy</button>
         <span id="smsStatus" class="muted small"></span>
         <span id="boxStatus" class="muted small"></span>
@@ -270,7 +270,7 @@
 
     <!-- Stav schránek (lokální přehled 1–8) -->
     <div class="card">
-      <h3 style="margin-top:0;color:#1a4a4">Stav schránek (1–8)</h3>
+      <h3 style="margin-top:0;color:#1a4a84">Stav schránek (1–8)</h3>
       <div id="lockerTable" class="out" style="white-space:normal"></div>
     </div>
 
@@ -688,17 +688,21 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
-    // === NOVÉ: poslat jen odkaz na /cs/codes/?box=XXXXXX (bez historie) ===
+    // === Poslat odkaz na /{lang}/codes/?box=XXXXXX a uložit do historie ===
     function buildCodesLink(){
       const base = (Q('#base')?.value || 'https://www.pensionfalconi.cz').replace(/\/+$/,'');
       const box  = (Q('#box')?.value || '').trim();
+      const lang = (Q('#smsLang')?.value || 'cz');
+      const seg  = (lang === 'en') ? 'en' : (lang === 'de' ? 'de' : 'cs');
       if(!/^\d{6}$/.test(box)) return '';
-      return `${base}/cs/codes/?box=${encodeURIComponent(box)}`;
+      return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
     }
     async function sendCodesLink(){
       const statusEl = Q('#smsStatus');
       const toRaw = (Q('#smsTo')?.value || '').trim();
       const numbers = normalizePhones(toRaw);
+      const lang = (Q('#smsLang')?.value || 'cz');
+
       if(!numbers.length){ if(statusEl) statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
 
       const link = buildCodesLink();
@@ -714,7 +718,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         const data = await resp.json().catch(()=>({}));
         if(!resp.ok || !data.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
         if(statusEl) statusEl.textContent = '✓ Odkaz odeslán.';
-        // POZN.: záměrně NIC NEUKLÁDÁME do historie
+
+        // ULOŽIT DO HISTORIE (jazyk označíme jako `${lang}-codes`)
+        const id = 'sms_link_' + Date.now();
+        const ts = Date.now();
+        const guest = (Q('#guest')?.value || '').trim();
+        await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: numbers, text: link, link }).catch(()=>{});
+        loadHistory();
+
       }catch(e){
         if(statusEl) statusEl.textContent = '✗ ' + (e.message || e);
       }
