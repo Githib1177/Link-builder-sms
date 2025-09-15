@@ -20,7 +20,7 @@
     .grid{display:grid;gap:12px}
     @media(min-width:900px){.grid.two{grid-template-columns:1fr 1fr}}
     label{font-weight:600}
-    input,textarea{width:100%;padding:10px 12px;border:1px solid #d9dfe6;border-radius:10px;font-size:14px;box-sizing:border-box}
+    input,textarea,select{width:100%;padding:10px 12px;border:1px solid #d9dfe6;border-radius:10px;font-size:14px;box-sizing:border-box}
     textarea{min-height:90px}
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
     button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
@@ -90,7 +90,8 @@
         </div>
         <div>
           <label for="box">Kód ke schránce (box)</label>
-          <input id="box" placeholder="5678" />
+          <input id="box" placeholder="5678**56** (6 číslic)" />
+          <div class="small muted">Pro kódování schránky je vyžadován **6místný** kód.</div>
         </div>
       </div>
 
@@ -199,7 +200,7 @@
       </div>
     </div>
 
-    <!-- NOVÉ: ODESLAT SMS přes SMSbrana.cz -->
+    <!-- NOVÉ: ODESLAT SMS + současné kódování schránky -->
     <div class="card">
       <h3 style="margin-top:0;color:#1a4a84">Odeslat SMS</h3>
       <div class="grid two">
@@ -217,9 +218,31 @@
           </select>
         </div>
       </div>
+
+      <hr style="border:none;border-top:1px dashed #d9dfe6;margin:14px 0">
+
+      <div class="grid two">
+        <div>
+          <label><input type="checkbox" id="doBoxCode" /> Kódovat schránku zároveň se SMS</label>
+          <div class="small muted">Pošle příkaz na <b>+420602783619</b> ve formátu <code>pin0000*xx*apc*xxxxxx*</code>.</div>
+        </div>
+        <div>
+          <label for="lockerNo">Číslo schránky (01–08)</label>
+          <input id="lockerNo" placeholder="01" />
+          <div class="row">
+            <label class="small"><input type="checkbox" id="lockerAutoInc" checked /> Po úspěchu automaticky navýšit (cyklus 01→08→01)</label>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="muted small">Náhled příkazu:</div>
+        <div id="lockerCmd" class="out"></div>
+      </div>
+
       <div class="row" style="margin-top:10px">
         <button class="btn" id="sendSMS">Odeslat SMS</button>
         <span id="smsStatus" class="muted small"></span>
+        <span id="boxStatus" class="muted small"></span>
       </div>
     </div>
 
@@ -241,6 +264,12 @@
         <button class="btn" id="histLoad">Načíst historii</button>
       </div>
       <div id="histTable" class="out" style="max-height:260px;overflow:auto;white-space:normal"></div>
+    </div>
+
+    <!-- NOVÉ: Stav schránek (lokální přehled 1–8) -->
+    <div class="card">
+      <h3 style="margin-top:0;color:#1a4a84">Stav schránek (1–8)</h3>
+      <div id="lockerTable" class="out" style="white-space:normal"></div>
     </div>
 
     <p class="muted">Ulož jako <b>link-builder.html</b>. Nastavení se uchová v tomto prohlížeči (localStorage).</p>
@@ -372,6 +401,9 @@ ${unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung st
 Die Anweisungen finden Sie hier: ${urlDE}
 
 Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
+
+      // přegenerovat náhled příkazu ke schránce
+      refreshLockerCmdPreview();
     }
 
     function copySel(sel){
@@ -396,7 +428,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }catch(e){}
     }
 
-    // ===== NOVÉ: Odesílání SMS přes backend /api/send-sms =====
+    // ===== Odesílání SMS (host) =====
     function normalizePhones(raw){
       return raw.split(/[,\n;]/).map(s => s.trim())
         .filter(Boolean)
@@ -413,7 +445,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       return !gsm.test(s);
     }
 
-    // ===== HISTORIE SMS (cloud sync) =====
+    // ===== HISTORIE SMS (cloud) =====
     function histCfg(){
       const api = (Q('#histApi')?.value || '/api').replace(/\/+$/,'');
       const token = (Q('#histToken')?.value || '').trim();
@@ -480,6 +512,132 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }catch(e){ /* ticho */ }
     }
 
+    // ===== KÓDOVÁNÍ SCHRÁNKY (lokální řízení + odeslání příkazu) =====
+    const BOX_DEST = '+420602783619';
+
+    function two(n){ n = parseInt(n,10); if(isNaN(n)||n<1) n=1; if(n>8) n=8; return String(n).padStart(2,'0'); }
+    function getNextLocker(){
+      let n = parseInt(localStorage.getItem('falconi_locker_next')||'1',10);
+      if(isNaN(n)||n<1||n>8) n = 1;
+      return n;
+    }
+    function setNextLocker(n){
+      try{ localStorage.setItem('falconi_locker_next', String(n)); }catch(e){}
+    }
+
+    function loadLockerNoIntoField(){
+      const f = Q('#lockerNo');
+      if(!f) return;
+      if(!f.value.trim()){
+        f.value = two(getNextLocker());
+      } else {
+        // normalize already typed value
+        const num = Math.min(8, Math.max(1, parseInt(f.value,10)||1));
+        f.value = two(num);
+      }
+    }
+
+    function buildLockerCmd(){
+      const lockerNo = (Q('#lockerNo')?.value || '').trim();
+      const boxCode  = (Q('#box')?.value || '').trim();
+      // vyžadujeme 6 číslic pro xxxxxx
+      const six = /^\d{6}$/.test(boxCode);
+      const lnOk = /^(0[1-8])$/.test(lockerNo);
+      const cmd = `pin0000*${lnOk?lockerNo:'??'}*apc*${six?boxCode:'??????'}*`;
+      return { cmd, lnOk, six };
+    }
+
+    function refreshLockerCmdPreview(){
+      const el = Q('#lockerCmd');
+      if(!el) return;
+      const { cmd, lnOk, six } = buildLockerCmd();
+      el.textContent = cmd;
+      el.style.borderColor = (lnOk && six) ? '#1a4a84' : '#b9c1cc';
+    }
+
+    function loadLockerState(){
+      try{
+        const raw = localStorage.getItem('falconi_locker_state');
+        return raw ? JSON.parse(raw) : {};
+      }catch(e){ return {}; }
+    }
+    function saveLockerState(state){
+      try{ localStorage.setItem('falconi_locker_state', JSON.stringify(state)); }catch(e){}
+    }
+    function renderLockerTable(){
+      const state = loadLockerState();
+      const el = Q('#lockerTable'); if(!el) return;
+      const rows = [];
+      rows.push('<table style="width:100%;border-collapse:collapse;font-size:13px">');
+      rows.push('<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Schránka</th><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Poslední kód</th><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Čas</th></tr></thead><tbody>');
+      for(let i=1;i<=8;i++){
+        const k = two(i);
+        const rec = state[k] || {};
+        const dt = rec.ts ? new Date(rec.ts).toLocaleString() : '—';
+        rows.push(`<tr>
+          <td style="padding:6px;border-bottom:1px solid #f1f5f9">#${k}</td>
+          <td style="padding:6px;border-bottom:1px solid #f1f5f9">${rec.code ? String(rec.code) : '—'}</td>
+          <td style="padding:6px;border-bottom:1px solid #f1f5f9">${dt}</td>
+        </tr>`);
+      }
+      rows.push('</tbody></table>');
+      el.innerHTML = rows.join('');
+    }
+
+    async function sendLockerCommand(){
+      const doBox = Q('#doBoxCode')?.checked;
+      const boxStatus = Q('#boxStatus');
+      if(boxStatus) boxStatus.textContent = '';
+
+      if(!doBox) return { skipped:true };
+
+      // validace vstupů
+      const { cmd, lnOk, six } = buildLockerCmd();
+      if(!lnOk || !six){
+        if(boxStatus) boxStatus.textContent = 'Schránka/6místný kód nejsou validní.';
+        return { ok:false, error:'Invalid locker or code' };
+      }
+
+      try{
+        if(boxStatus) boxStatus.textContent = 'Kóduji schránku…';
+        const resp = await fetch('/api/send-sms', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ to: [BOX_DEST], text: cmd })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if(!resp.ok || !data.ok){
+          throw new Error(data.error || data.detail || 'Chyba při odesílání příkazu');
+        }
+        if(boxStatus) boxStatus.textContent = '✓ Schránka nakódována.';
+
+        // uložit stav schránky
+        const lockerNo = (Q('#lockerNo')?.value || '').trim();
+        const boxCode  = (Q('#box')?.value || '').trim();
+        const st = loadLockerState();
+        st[lockerNo] = { code: boxCode, ts: Date.now() };
+        saveLockerState(st);
+        renderLockerTable();
+
+        // auto-inc
+        const autoInc = Q('#lockerAutoInc')?.checked;
+        if(autoInc){
+          let next = parseInt(lockerNo,10)+1; if(next>8) next=1;
+          setNextLocker(next);
+          if(Q('#lockerNo')) Q('#lockerNo').value = two(next);
+          refreshLockerCmdPreview();
+        }else{
+          // když nevzestupně, stále uložíme další jako aktuální (nepřepíšeme)
+          setNextLocker(parseInt(lockerNo,10) || 1);
+        }
+        return { ok:true };
+      }catch(e){
+        if(boxStatus) boxStatus.textContent = '✗ Nepodařilo se nakódovat: ' + (e.message || e);
+        return { ok:false, error:e.message || e };
+      }
+    }
+
+    // ===== Odeslání SMS hostům + volitelné kódování schránky =====
     async function sendSms(){
       const toRaw = Q('#smsTo').value.trim();
       const lang  = Q('#smsLang').value;
@@ -513,7 +671,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         }
         statusEl.textContent = '✓ SMS odeslána.';
 
-        // po úspěchu uložit do cloudu (neblokuje UI) a přenačíst tabulku
+        // cloud historie (neblokuje UI)
         const id = 'sms_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
@@ -525,10 +683,17 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         saveHistory({ id, ts, guest, lang, to: numbers, text, link })
           .then(()=>loadHistory())
           .catch(()=>{});
+
+        // — nyní volitelně kódovat schránku —
+        await sendLockerCommand();
+
       }catch(e){
         statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
       }
     }
+
+    // === UI vazby a start ===
+    function onLockerInputChanged(){ refreshLockerCmdPreview(); }
 
     document.addEventListener('click', e=>{
       const t = e.target;
@@ -549,7 +714,27 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'histLoad') loadHistory();
     });
 
-    load(); gen(); loadHistCfg();
+    // vstupy ovlivňující příkaz ke schránce
+    document.addEventListener('input', e=>{
+      if(e.target && (e.target.id==='lockerNo' || e.target.id==='box')){
+        if(e.target.id==='lockerNo'){
+          // normalizovat na 01–08
+          const val = e.target.value.replace(/\D/g,'');
+          if(val==='') return refreshLockerCmdPreview();
+          const n = Math.min(8, Math.max(1, parseInt(val,10)||1));
+          e.target.value = two(n);
+        }
+        refreshLockerCmdPreview();
+      }
+    });
+
+    // init
+    load();
+    gen();
+    loadHistCfg();
+    loadLockerNoIntoField();
+    refreshLockerCmdPreview();
+    renderLockerTable();
   </script>
 
   <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
