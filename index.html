@@ -200,7 +200,7 @@
       </div>
     </div>
 
-    <!-- ODESLAT SMS + případné kódování schránky -->
+    <!-- ODESLAT SMS + kódování schránky -->
     <div class="card">
       <h3 style="margin-top:0;color:#1a4a84">Odeslat SMS</h3>
       <div class="grid two">
@@ -225,6 +225,13 @@
         <div>
           <label><input type="checkbox" id="doBoxCode" /> Kódovat schránku zároveň se SMS</label>
           <div class="small muted">Pošle příkaz na <b>+420602783619</b> ve formátu <code>pin0000*xx*apc*xxxxxx*</code>.</div>
+
+          <!-- NOVÉ: neodesílat kód hostovi, ale schránku nakódovat -->
+          <div class="row">
+            <label class="small"><input type="checkbox" id="noSendBoxInLink" />
+              Neodesílat kód boxu hostovi (pošle se jen odkaz; schránku nakódovat)
+            </label>
+          </div>
         </div>
         <div>
           <label for="lockerNo">Číslo schránky (01–08)</label>
@@ -241,8 +248,8 @@
 
       <div class="row" style="margin-top:10px">
         <button class="btn" id="sendSMS">Odeslat SMS</button>
-        <!-- Poslat odkaz na stránku s kódem (ukládá se do historie) -->
-        <button class="btn-ghost" id="sendCodesLink" title="Pošle odkaz na stránku s kódem">Poslat odkaz na kódy</button>
+        <!-- Poslat odkaz na stránku s kódem / bez kódu (ukládá se do historie) -->
+        <button class="btn-ghost" id="sendCodesLink" title="Pošle odkaz na stránku s kódem nebo bez kódu podle přepínače">Poslat odkaz na kódy</button>
         <span id="smsStatus" class="muted small"></span>
         <span id="boxStatus" class="muted small"></span>
       </div>
@@ -353,7 +360,6 @@
       const lastName = getLastName(guest);
       const czHello = czGreeting();
 
-      // Texty – priorita: unpaid > done > default
       const czLine = unpaid
         ? 'check-in je hotový, zbývá doplatit. Pokyny:'
         : (done ? 'check-in je hotový. Pokyny:' : 'prosíme o online check-in a platbu. Pokyny:');
@@ -404,7 +410,6 @@ Die Anweisungen finden Sie hier: ${urlDE}
 
 Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
-      // přegenerovat náhled příkazu ke schránce
       refreshLockerCmdPreview();
     }
 
@@ -688,32 +693,58 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
-    // === Poslat odkaz na /{lang}/codes/?box=XXXXXX s předtextem a uložit do historie ===
-    function buildCodesLink(){
+    // === Poslat odkaz na /{lang}/codes/ (s/bez ?box=) + případně nakódovat ===
+    function buildCodesLink(includeBox){
       const base = (Q('#base')?.value || 'https://www.pensionfalconi.cz').replace(/\/+$/,'');
       const box  = (Q('#box')?.value || '').trim();
       const lang = (Q('#smsLang')?.value || 'cz');
       const seg  = (lang === 'en') ? 'en' : (lang === 'de' ? 'de' : 'cs');
-      if(!/^\d{6}$/.test(box)) return '';
-      return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
+      if(includeBox){
+        if(!/^\d{6}$/.test(box)) return ''; // když chceme poslat s kódem, musí být 6 číslic
+        return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
+      }
+      return `${base}/${seg}/codes/`;
     }
-    function codesPrefix(lang){
-      if(lang === 'en') return 'Pension Falconi – Your key safe code:';
-      if(lang === 'de') return 'Pension Falconi – Ihr Schlüsselsafe-Code:';
-      return 'Pension Falconi – Váš kód k boxu:';
+    function codesPrefix(lang, includeBox){
+      if(includeBox){
+        if(lang === 'en') return 'Pension Falconi – Your key safe code:';
+        if(lang === 'de') return 'Pension Falconi – Ihr Schlüsselsafe-Code:';
+        return 'Pension Falconi – Váš kód k boxu:';
+      }else{
+        if(lang === 'en') return 'Pension Falconi – Link to your check-in info:';
+        if(lang === 'de') return 'Pension Falconi – Link zu Ihren Check-in-Infos:';
+        return 'Pension Falconi – Odkaz na pokyny k check-inu:';
+      }
+    }
+    async function ensureLockerCoded(){
+      // dočasně zapnout doBoxCode, aby se použila existující logika
+      const chk = Q('#doBoxCode');
+      const prev = chk ? chk.checked : false;
+      if(chk) chk.checked = true;
+      const res = await sendLockerCommand();
+      if(chk) chk.checked = prev;
+      return res;
     }
     async function sendCodesLink(){
       const statusEl = Q('#smsStatus');
       const toRaw = (Q('#smsTo')?.value || '').trim();
       const numbers = normalizePhones(toRaw);
       const lang = (Q('#smsLang')?.value || 'cz');
+      const noSend = !!(Q('#noSendBoxInLink')?.checked);
 
       if(!numbers.length){ if(statusEl) statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
 
-      const link = buildCodesLink();
-      if(!link){ if(statusEl) statusEl.textContent = 'Chybí 6místný kód schránky.'; return; }
+      const link = buildCodesLink(!noSend);
+      if(!link){
+        if(noSend){
+          // posíláme bez kódu, link vždy máme
+        }else{
+          if(statusEl) statusEl.textContent = 'Chybí 6místný kód schránky.';
+          return;
+        }
+      }
 
-      const text = `${codesPrefix(lang)}\n${link}`;
+      const text = `${codesPrefix(lang, !noSend)}\n${link}`;
 
       try{
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
@@ -726,12 +757,17 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         if(!resp.ok || !data.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
         if(statusEl) statusEl.textContent = '✓ Odkaz odeslán.';
 
-        // ULOŽIT DO HISTORIE (jazyk označíme jako `${lang}-codes`)
+        // Uložit do historie (lang označíme jako `${lang}-codes`)
         const id = 'sms_link_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
         await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: numbers, text, link }).catch(()=>{});
         loadHistory();
+
+        // Pokud je zaškrtnuto "neposílat kód", přesto schránku nakóduj
+        if(noSend){
+          await ensureLockerCoded();
+        }
 
       }catch(e){
         if(statusEl) statusEl.textContent = '✗ ' + (e.message || e);
@@ -761,7 +797,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'histLoad') loadHistory();
     });
 
-    // vstupy ovlivňující příkaz ke schránce
     document.addEventListener('input', e=>{
       if(e.target && (e.target.id==='lockerNo' || e.target.id==='box')){
         if(e.target.id==='lockerNo'){
