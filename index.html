@@ -226,7 +226,7 @@
           <label><input type="checkbox" id="doBoxCode" /> Kódovat schránku zároveň se SMS</label>
           <div class="small muted">Pošle příkaz na <b>+420602783619</b> ve formátu <code>pin0000*xx*apc*xxxxxx*</code>.</div>
 
-          <!-- NOVÉ: neodesílat kód hostovi, ale schránku nakódovat -->
+          <!-- neodesílat kód hostovi (pošle se jen odkaz; schránku lze přitom nakódovat) -->
           <div class="row">
             <label class="small"><input type="checkbox" id="noSendBoxInLink" />
               Neodesílat kód boxu hostovi (pošle se jen odkaz; schránku nakódovat)
@@ -334,12 +334,14 @@
       const box    = Q('#box').value.trim();
       const done   = Q('#done').checked;
       const unpaid = Q('#unpaid').checked;
+      const noSendBox = Q('#noSendBoxInLink')?.checked; // ← NOVÉ
 
       const alfFull = deriveAlfUrl(alfIn);
 
       const params = {};
       if(alfFull) params.alf = alfFull;
-      if(box)     params.box = box;
+      // if(box)     params.box = box;          // (původní řádek odstraněn)
+      if(box && !noSendBox) params.box = box;   // ← NOVÉ: box jen když NEskrýváme
       if(done)    params.done = 1;
       if(unpaid)  params.unpaid = 1;
 
@@ -797,6 +799,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'histLoad') loadHistory();
     });
 
+    // ← NOVÉ: při přepnutí "neposílat kód" znovu přegenerovat texty/URL
+    document.addEventListener('change', e=>{
+      if(e.target && e.target.id === 'noSendBoxInLink'){
+        gen();
+      }
+    });
+
+    // vstupy ovlivňující příkaz ke schránce
     document.addEventListener('input', e=>{
       if(e.target && (e.target.id==='lockerNo' || e.target.id==='box')){
         if(e.target.id==='lockerNo'){
