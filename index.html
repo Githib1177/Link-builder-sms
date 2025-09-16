@@ -226,7 +226,7 @@
           <label><input type="checkbox" id="doBoxCode" /> Kódovat schránku zároveň se SMS</label>
           <div class="small muted">Pošle příkaz na <b>+420602783619</b> ve formátu <code>pin0000*xx*apc*xxxxxx*</code>.</div>
 
-          <!-- neodesílat kód hostovi (pošle se jen odkaz; schránku lze přitom nakódovat) -->
+          <!-- neodesílat kód hostovi (pošle se jen odkaz; schránku nakódovat) -->
           <div class="row">
             <label class="small"><input type="checkbox" id="noSendBoxInLink" />
               Neodesílat kód boxu hostovi (pošle se jen odkaz; schránku nakódovat)
@@ -287,6 +287,7 @@
   <script>
     const Q = id => document.querySelector(id);
     const enc = v => encodeURIComponent(v.trim());
+    let _lastCodedKey = ''; // ochrana proti opakovanému kódování při stejných hodnotách
 
     function buildUrl(base, path, params){
       const b = (base || '').replace(/\/+$/,'');
@@ -334,14 +335,13 @@
       const box    = Q('#box').value.trim();
       const done   = Q('#done').checked;
       const unpaid = Q('#unpaid').checked;
-      const noSendBox = Q('#noSendBoxInLink')?.checked; // ← NOVÉ
+      const noSendBox = Q('#noSendBoxInLink')?.checked;
 
       const alfFull = deriveAlfUrl(alfIn);
 
       const params = {};
       if(alfFull) params.alf = alfFull;
-      // if(box)     params.box = box;          // (původní řádek odstraněn)
-      if(box && !noSendBox) params.box = box;   // ← NOVÉ: box jen když NEskrýváme
+      if(box && !noSendBox) params.box = box;   // schovat/ukázat box dle přepínače
       if(done)    params.done = 1;
       if(unpaid)  params.unpaid = 1;
 
@@ -413,6 +413,18 @@ Die Anweisungen finden Sie hier: ${urlDE}
 Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
       refreshLockerCmdPreview();
+
+      // === NOVĚ: kódovat schránku už při GENEROVÁNÍ, jednorázově pro danou kombinaci ===
+      if (Q('#doBoxCode')?.checked) {
+        let ln = (Q('#lockerNo')?.value || '').replace(/\D/g,'');
+        if (ln.length === 1) ln = '0' + ln;
+        const codedKey = `${ln}|${box}`;
+        const validLN = /^(0[1-8])$/.test(ln);
+        const validBox = /^\d{6}$/.test(box);
+        if (validLN && validBox && codedKey !== _lastCodedKey) {
+          ensureLockerCoded().then(()=>{ _lastCodedKey = codedKey; }).catch(()=>{});
+        }
+      }
     }
 
     function copySel(sel){
@@ -640,7 +652,17 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
-    // ===== Odeslání SMS hostům =====
+    // Pomocník: dočasně zapnout checkbox a použít existující logiku
+    async function ensureLockerCoded(){
+      const chk = Q('#doBoxCode');
+      const prev = chk ? chk.checked : false;
+      if(chk) chk.checked = true;
+      const res = await sendLockerCommand();
+      if(chk) chk.checked = prev;
+      return res;
+    }
+
+    // ===== Odeslání SMS hostům (bez kódování schránky) =====
     async function sendSms(){
       const toRaw = Q('#smsTo').value.trim();
       const lang  = Q('#smsLang').value;
@@ -687,22 +709,21 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
           .then(()=>loadHistory())
           .catch(()=>{});
 
-        // volitelně kódovat schránku
-        await sendLockerCommand();
+        // (ŽÁDNÉ kódování schránky zde)
 
       }catch(e){
         statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
       }
     }
 
-    // === Poslat odkaz na /{lang}/codes/ (s/bez ?box=) + případně nakódovat ===
+    // === Poslat odkaz na /{lang}/codes/ (s/bez ?box=), bez kódování ===
     function buildCodesLink(includeBox){
       const base = (Q('#base')?.value || 'https://www.pensionfalconi.cz').replace(/\/+$/,'');
       const box  = (Q('#box')?.value || '').trim();
       const lang = (Q('#smsLang')?.value || 'cz');
       const seg  = (lang === 'en') ? 'en' : (lang === 'de' ? 'de' : 'cs');
       if(includeBox){
-        if(!/^\d{6}$/.test(box)) return ''; // když chceme poslat s kódem, musí být 6 číslic
+        if(!/^\d{6}$/.test(box)) return '';
         return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
       }
       return `${base}/${seg}/codes/`;
@@ -713,19 +734,10 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         if(lang === 'de') return 'Pension Falconi – Ihr Schlüsselsafe-Code:';
         return 'Pension Falconi – Váš kód k boxu:';
       }else{
-        if(lang === 'en') return 'Pension Falconi – Link to your key safe code:';
-        if(lang === 'de') return 'Pension Falconi – Link zu Ihren Schlüsselsafe-Code:';
-        return 'Pension Falconi – Odkaz na váš kód ke schránce:';
+        if(lang === 'en') return 'Pension Falconi – Link to your check-in info:';
+        if(lang === 'de') return 'Pension Falconi – Link zu Ihren Check-in-Infos:';
+        return 'Pension Falconi – Odkaz na pokyny k check-inu:';
       }
-    }
-    async function ensureLockerCoded(){
-      // dočasně zapnout doBoxCode, aby se použila existující logika
-      const chk = Q('#doBoxCode');
-      const prev = chk ? chk.checked : false;
-      if(chk) chk.checked = true;
-      const res = await sendLockerCommand();
-      if(chk) chk.checked = prev;
-      return res;
     }
     async function sendCodesLink(){
       const statusEl = Q('#smsStatus');
@@ -739,7 +751,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       const link = buildCodesLink(!noSend);
       if(!link){
         if(noSend){
-          // posíláme bez kódu, link vždy máme
+          // bez kódu link vždy existuje
         }else{
           if(statusEl) statusEl.textContent = 'Chybí 6místný kód schránky.';
           return;
@@ -759,17 +771,13 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         if(!resp.ok || !data.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
         if(statusEl) statusEl.textContent = '✓ Odkaz odeslán.';
 
-        // Uložit do historie (lang označíme jako `${lang}-codes`)
         const id = 'sms_link_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
         await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: numbers, text, link }).catch(()=>{});
         loadHistory();
 
-        // Pokud je zaškrtnuto "neposílat kód", přesto schránku nakóduj
-        if(noSend){
-          await ensureLockerCoded();
-        }
+        // (ŽÁDNÉ kódování schránky zde)
 
       }catch(e){
         if(statusEl) statusEl.textContent = '✗ ' + (e.message || e);
@@ -799,7 +807,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'histLoad') loadHistory();
     });
 
-    // ← NOVÉ: při přepnutí "neposílat kód" znovu přegenerovat texty/URL
+    // při přepnutí "neposílat kód" znovu přegenerovat texty/URL
     document.addEventListener('change', e=>{
       if(e.target && e.target.id === 'noSendBoxInLink'){
         gen();
@@ -836,4 +844,3 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
   </script>
 </body>
 </html>
-
