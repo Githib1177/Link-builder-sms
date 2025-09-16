@@ -648,6 +648,11 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
         st[lockerNo] = { code: boxCode, ts: Date.now() };
         saveLockerState(st);
         renderLockerTable();
+        try{
+  const built = buildLockerCmd();
+  await saveLockerCloudEvent(lockerNo, boxCode, built.cmd);
+  loadHistory();
+}catch(_e){}
 
         const autoInc = Q('#lockerAutoInc')?.checked;
         if(autoInc){
@@ -850,4 +855,5 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
   </script>
 </body>
 </html>
+
 
