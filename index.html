@@ -642,7 +642,7 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
         }
         if(boxStatus) boxStatus.textContent = '✓ Schránka nakódována.';
 
-        const lockerNo = (Q('#lockerNo')?.value || '').trim();
+        const lockerNo = two(Q('#lockerNo')?.value || '1');
         const boxCode  = (Q('#box')?.value || '').trim();
         const st = loadLockerState();
         st[lockerNo] = { code: boxCode, ts: Date.now() };
@@ -855,5 +855,6 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
   </script>
 </body>
 </html>
+
 
 
