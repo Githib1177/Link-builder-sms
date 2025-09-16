@@ -518,11 +518,8 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
           headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
           body: JSON.stringify(rec)
         });
-      }catch(e){ /* ticho */ }
-    }
-    async function saveHistory(rec){
-  // ...
-} // ← konec saveHistory
+      
+ // ← konec saveHistory
 
 async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
   const { api, token } = histCfg();
@@ -855,6 +852,7 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
   </script>
 </body>
 </html>
+
 
 
 
