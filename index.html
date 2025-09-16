@@ -242,7 +242,7 @@
       <div class="row" style="margin-top:10px">
         <button class="btn" id="sendSMS">Odeslat SMS</button>
         <!-- Poslat odkaz na stránku s kódem (ukládá se do historie) -->
-        <button class="btn-ghost" id="sendCodesLink" title="Pošle odkaz na stránku s kódem">Poslat pouze kód</button>
+        <button class="btn-ghost" id="sendCodesLink" title="Pošle odkaz na stránku s kódem">Poslat odkaz na kódy</button>
         <span id="smsStatus" class="muted small"></span>
         <span id="boxStatus" class="muted small"></span>
       </div>
@@ -688,7 +688,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
-    // === Poslat odkaz na /{lang}/codes/?box=XXXXXX a uložit do historie ===
+    // === Poslat odkaz na /{lang}/codes/?box=XXXXXX s předtextem a uložit do historie ===
     function buildCodesLink(){
       const base = (Q('#base')?.value || 'https://www.pensionfalconi.cz').replace(/\/+$/,'');
       const box  = (Q('#box')?.value || '').trim();
@@ -696,6 +696,11 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       const seg  = (lang === 'en') ? 'en' : (lang === 'de' ? 'de' : 'cs');
       if(!/^\d{6}$/.test(box)) return '';
       return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
+    }
+    function codesPrefix(lang){
+      if(lang === 'en') return 'Pension Falconi – Your key safe code:';
+      if(lang === 'de') return 'Pension Falconi – Ihr Schlüsselsafe-Code:';
+      return 'Pension Falconi – Váš kód k boxu:';
     }
     async function sendCodesLink(){
       const statusEl = Q('#smsStatus');
@@ -708,12 +713,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       const link = buildCodesLink();
       if(!link){ if(statusEl) statusEl.textContent = 'Chybí 6místný kód schránky.'; return; }
 
+      const text = `${codesPrefix(lang)}\n${link}`;
+
       try{
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
         const resp = await fetch('/api/send-sms', {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ to: numbers, text: link })
+          body: JSON.stringify({ to: numbers, text })
         });
         const data = await resp.json().catch(()=>({}));
         if(!resp.ok || !data.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
@@ -723,7 +730,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         const id = 'sms_link_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
-        await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: numbers, text: link, link }).catch(()=>{});
+        await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: numbers, text, link }).catch(()=>{});
         loadHistory();
 
       }catch(e){
@@ -784,4 +791,3 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
   </script>
 </body>
 </html>
-
