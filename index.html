@@ -497,6 +497,46 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       html.push('</tbody></table>');
       el.innerHTML = html.join('');
     }
+
+    // ⟶ NOVÉ: z rekordů v historii vytáhne stav schránek a promítne do tabulky
+    function updateLockerStateFromHistory(rows){
+      if(!Array.isArray(rows) || rows.length===0) return;
+      // vyber jen záznamy generované uložením kódu schránky
+      const lockerRows = rows.filter(r => String(r.lang||'').toLowerCase() === 'locker');
+      if(lockerRows.length === 0) return;
+
+      const latestByLocker = {}; // { '01': { code:'123456', ts: 169... } }
+      lockerRows.forEach(r=>{
+        const ts = Number(r.ts) || 0;
+        // očekáváme text ve tvaru "Kódování schránky #01 → 123456 | pin0000*..."
+        const m = /#(0[1-8])\D+(\d{6})/.exec(String(r.text||''));
+        if(!m) return;
+        const ln = m[1];
+        const code = m[2];
+        const prev = latestByLocker[ln];
+        if(!prev || ts > prev.ts){
+          latestByLocker[ln] = { code, ts };
+        }
+      });
+
+      if(Object.keys(latestByLocker).length === 0) return;
+
+      // merge s lokálním stavem a překreslit
+      const local = loadLockerState();
+      let changed = false;
+      for(const ln in latestByLocker){
+        const rec = latestByLocker[ln];
+        if(!local[ln] || (Number(local[ln].ts)||0) < rec.ts){
+          local[ln] = rec;
+          changed = true;
+        }
+      }
+      if(changed){
+        saveLockerState(local);
+        renderLockerTable();
+      }
+    }
+
     async function loadHistory(){
       const { api, token } = histCfg();
       const el = Q('#histTable'); if(el) el.textContent = 'Načítám…';
@@ -504,11 +544,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       try{
         const r = await fetch(`${api}/sms-history`, { headers: { Authorization: `Bearer ${token}` }});
         const data = await r.json().catch(()=>[]);
-        renderHistory(Array.isArray(data) ? data : []);
+        const rows = Array.isArray(data) ? data : [];
+        renderHistory(rows);                 // zachováno původní zobrazení
+        updateLockerStateFromHistory(rows);  // ✦ doplněno: propis stavu schránek
       }catch(e){
         if(el) el.textContent = 'Chyba: ' + (e.message || e);
       }
     }
+
     async function saveHistory(rec){
       const { api, token } = histCfg();
       if(!token) return;
@@ -520,29 +563,25 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         });
       }catch(e){ /* ticho */ }
     }
-    
 
-async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
-  const { api, token } = histCfg();
-  if(!token) return;
-  try{
-    const id    = 'locker_' + Date.now() + '_' + lockerNo;
-    const ts    = Date.now();
-    const guest = (Q('#guest')?.value || '').trim();
-    const to    = [BOX_DEST];
-    const lang  = 'locker';
-    const text  = `Kódování schránky #${lockerNo} → ${boxCode} | ${cmd}`;
+    async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
+      const { api, token } = histCfg();
+      if(!token) return;
+      try{
+        const id    = 'locker_' + Date.now() + '_' + lockerNo;
+        const ts    = Date.now();
+        const guest = (Q('#guest')?.value || '').trim();
+        const to    = [BOX_DEST];
+        const lang  = 'locker';
+        const text  = `Kódování schránky #${lockerNo} → ${boxCode} | ${cmd}`;
 
-    await fetch(`${api}/sms-history`, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-      body: JSON.stringify({ id, ts, guest, lang, to, text })
-    });
-  }catch(e){}
-}
-
-// ===== KÓDOVÁNÍ SCHRÁNEK =====
-
+        await fetch(`${api}/sms-history`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+          body: JSON.stringify({ id, ts, guest, lang, to, text })
+        });
+      }catch(e){}
+    }
 
     // ===== KÓDOVÁNÍ SCHRÁNEK =====
     const BOX_DEST = '+420602783619';
@@ -647,10 +686,10 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
         saveLockerState(st);
         renderLockerTable();
         try{
-  const built = buildLockerCmd();
-  await saveLockerCloudEvent(lockerNo, boxCode, built.cmd);
-  loadHistory();
-}catch(_e){}
+          const built = buildLockerCmd();
+          await saveLockerCloudEvent(lockerNo, boxCode, built.cmd);
+          loadHistory();
+        }catch(_e){}
 
         const autoInc = Q('#lockerAutoInc')?.checked;
         if(autoInc){
@@ -853,6 +892,3 @@ async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
   </script>
 </body>
 </html>
-
-
-
