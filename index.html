@@ -520,6 +520,31 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         });
       }catch(e){ /* ticho */ }
     }
+    async function saveHistory(rec){
+  // ...
+} // ← konec saveHistory
+
+async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
+  const { api, token } = histCfg();
+  if(!token) return;
+  try{
+    const id    = 'locker_' + Date.now() + '_' + lockerNo;
+    const ts    = Date.now();
+    const guest = (Q('#guest')?.value || '').trim();
+    const to    = [BOX_DEST];
+    const lang  = 'locker';
+    const text  = `Kódování schránky #${lockerNo} → ${boxCode} | ${cmd}`;
+
+    await fetch(`${api}/sms-history`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+      body: JSON.stringify({ id, ts, guest, lang, to, text })
+    });
+  }catch(e){}
+}
+
+// ===== KÓDOVÁNÍ SCHRÁNEK =====
+
 
     // ===== KÓDOVÁNÍ SCHRÁNEK =====
     const BOX_DEST = '+420602783619';
@@ -825,3 +850,4 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
   </script>
 </body>
 </html>
+
