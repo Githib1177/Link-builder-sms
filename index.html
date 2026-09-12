@@ -16,6 +16,7 @@
     #loginGate.hidden{display:none}
     .login-card{width:min(390px,100%);background:#fff;border-radius:18px;padding:26px;box-shadow:0 18px 60px rgba(0,0,0,.18)}
     .login-card h2{margin:0 0 8px;color:#173c31}.login-card input{width:100%;box-sizing:border-box;margin:14px 0 10px}
+    .pick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:7px}.pick{padding:10px 6px;border:2px solid #d9e1ea;border-radius:10px;background:#fff;font-weight:800;cursor:pointer}.pick.active{background:#1a4a84;color:#fff;border-color:#1a4a84}
     :root{--brand:#1a4a84;--accent:#d2b573;--ink:#2d2d2d;--card:#fff;--bg:#f7f8fa}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0}
     .wrap{max-width:980px;margin:0 auto;padding:24px}
@@ -249,6 +250,12 @@
         <div>
           <label for="lockerNo">Číslo schránky (01–08)</label>
           <input id="lockerNo" placeholder="01" />
+          <div id="lockerPicks" class="pick-grid">
+            <button type="button" class="pick" data-locker="01">01</button><button type="button" class="pick" data-locker="02">02</button><button type="button" class="pick" data-locker="03">03</button><button type="button" class="pick" data-locker="04">04</button>
+            <button type="button" class="pick" data-locker="05">05</button><button type="button" class="pick" data-locker="06">06</button><button type="button" class="pick" data-locker="07">07</button><button type="button" class="pick" data-locker="08">08</button>
+          </div>
+          <label for="roomNo" style="margin-top:10px">Karta je pro pokoj (1–12)</label>
+          <select id="roomNo"><option value="">Vyberte pokoj</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
           <div class="row">
             <label class="small"><input type="checkbox" id="lockerAutoInc" checked /> Po úspěchu automaticky navýšit (cyklus 01→08→01)</label>
           </div>
@@ -677,13 +684,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       const el = Q('#lockerTable'); if(!el) return;
       const rows = [];
       rows.push('<table style="width:100%;border-collapse:collapse;font-size:13px">');
-      rows.push('<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Schránka</th><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Poslední kód</th><th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Čas</th></tr></thead><tbody>');
+      rows.push('<thead><tr><th>Schránka</th><th>Pokoj</th><th>Poslední kód</th><th>Čas</th></tr></thead><tbody>');
       for(let i=1;i<=8;i++){
         const k = two(i);
         const rec = state[k] || {};
         const dt = rec.ts ? new Date(rec.ts).toLocaleString() : '—';
         rows.push(`<tr>
           <td style="padding:6px;border-bottom:1px solid #f1f5f9">#${k}</td>
+          <td style="padding:6px;border-bottom:1px solid #f1f5f9">${rec.room || '—'}</td>
           <td style="padding:6px;border-bottom:1px solid #f1f5f9">${rec.code ? String(rec.code) : '—'}</td>
           <td style="padding:6px;border-bottom:1px solid #f1f5f9">${dt}</td>
         </tr>`);
@@ -721,7 +729,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         const lockerNo = two(Q('#lockerNo')?.value || '1');
         const boxCode  = (Q('#box')?.value || '').trim();
         const st = loadLockerState();
-        st[lockerNo] = { code: boxCode, ts: Date.now() };
+        st[lockerNo] = { code: boxCode, room: (Q('#roomNo')?.value || ''), ts: Date.now() };
         saveLockerState(st);
         renderLockerTable();
         try{
@@ -873,6 +881,12 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
     // === UI vazby a start ===
     function onLockerInputChanged(){ refreshLockerCmdPreview(); }
+
+    document.querySelectorAll('[data-locker]').forEach(button=>button.addEventListener('click', ()=>{
+      Q('#lockerNo').value = button.dataset.locker;
+      document.querySelectorAll('[data-locker]').forEach(item=>item.classList.toggle('active', item === button));
+      refreshLockerCmdPreview();
+    }));
 
     document.addEventListener('click', e=>{
       const t = e.target;
