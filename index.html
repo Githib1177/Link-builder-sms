@@ -36,6 +36,7 @@
     .muted{color:#666;font-size:.92rem}
     .small{font-size:.88rem}
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;margin-left:6px;font-size:.8rem}
+    .booking-state{margin-top:14px;padding:14px;border:2px solid #fca5a5;border-radius:14px;background:#fff1f2;transition:.2s}.booking-state.done{border-color:#86efac;background:#ecfdf5}.state-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}.state-switch{display:flex;align-items:center;gap:9px;padding:11px;border:2px solid #e5e7eb;border-radius:11px;background:#fff;cursor:pointer}.state-switch input{width:20px;height:20px;accent-color:var(--brand)}.state-note{margin-top:9px;font-weight:800;color:#991b1b}.booking-state.done .state-note{color:#166534}.booking-state.payment-due .payment-switch{border-color:#f59e0b;background:#fffbeb}@media(max-width:600px){.state-switches{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -110,13 +111,13 @@
       </div>
 
       <!-- Stavové přepínače -->
-      <div style="margin-top:10px">
-        <label style="display:block;margin-bottom:6px;">
-          <input type="checkbox" id="done"> Check-in již dokončen (přidat <code>done=1</code>)
-        </label>
-        <label style="display:block;">
-          <input type="checkbox" id="unpaid"> Platba zbývá (částečná/žádná)
-        </label>
+      <div id="bookingState" class="booking-state">
+        <strong>Stav rezervace</strong>
+        <div class="state-switches">
+          <label class="state-switch"><input type="checkbox" id="done"><span>Check-in všech hostů dokončen</span></label>
+          <label class="state-switch payment-switch"><input type="checkbox" id="unpaid"><span>Platba ještě zbývá</span></label>
+        </div>
+        <div id="bookingStateNote" class="state-note">Check-in není dokončen</div>
       </div>
 
       <div class="row">
@@ -365,6 +366,19 @@
       if(!ln) return 'Dobrý den,';
       const honorific = isFemale ? 'Paní' : 'Pane';
       return `Dobrý den, ${honorific} ${ln},`;
+    }
+
+    function updateBookingState(){
+      const complete = Q('#done').checked;
+      const due = Q('#unpaid').checked;
+      const card = Q('#bookingState');
+      card.classList.toggle('done', complete);
+      card.classList.toggle('payment-due', complete && due);
+      Q('#bookingStateNote').textContent = !complete
+        ? 'Check-in není dokončen – host dostane výzvu k dokončení.'
+        : due
+          ? 'Check-in dokončen, platba ještě zbývá.'
+          : 'Check-in dokončen a platba je vyřízená.';
     }
 
     function gen(){
@@ -887,6 +901,10 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       document.querySelectorAll('[data-locker]').forEach(item=>item.classList.toggle('active', item === button));
       refreshLockerCmdPreview();
     }));
+
+    Q('#done').addEventListener('change', updateBookingState);
+    Q('#unpaid').addEventListener('change', updateBookingState);
+    updateBookingState();
 
     document.addEventListener('click', e=>{
       const t = e.target;
