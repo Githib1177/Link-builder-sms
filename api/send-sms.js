@@ -184,7 +184,12 @@ export default async function handler(req, res) {
       results.push({ number: n, ...r });
     }
     const ok = results.some(r => r.err === 0);
-    return res.status(200).json({ ok, results });
+    const last = results[results.length - 1];
+    return res.status(200).json({
+      ok,
+      results,
+      error: ok ? undefined : `SMSBrána: ${last?.errMessage || 'chyba'} (kód ${last?.err ?? '?'})`,
+    });
   } catch (e) {
     console.error('[send-sms] ERROR', e);
     return res.status(500).json({ ok: false, error: e.message });
