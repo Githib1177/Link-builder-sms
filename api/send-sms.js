@@ -77,8 +77,8 @@ async function sendStrategies({ login, password, number, text }) {
 
   // Endpoints a pořadí strategií:
   const ENDPOINTS = [
-    'https://www.smsbrana.cz/smsconnect/http.php',
-    'https://api.smsbrana.cz/smsconnect/http.php',
+    'https://api.smsbrana.cz/smsconnect/',
+    'https://api-backup.smsbrana.cz/smsconnect/',
   ];
 
   // 1) GET + ASCII (to je nejblíž tvému ručnímu testu, který fungoval)
