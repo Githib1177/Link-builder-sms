@@ -37,6 +37,7 @@
     .small{font-size:.88rem}
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;margin-left:6px;font-size:.8rem}
     .booking-state{margin-top:14px;padding:14px;border:2px solid #fca5a5;border-radius:14px;background:#fff1f2;transition:.2s}.booking-state.done{border-color:#86efac;background:#ecfdf5}.state-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}.state-switch{display:flex;align-items:center;gap:9px;padding:11px;border:2px solid #e5e7eb;border-radius:11px;background:#fff;cursor:pointer}.state-switch input{width:20px;height:20px;accent-color:var(--brand)}.state-note{margin-top:9px;font-weight:800;color:#991b1b}.booking-state.done .state-note{color:#166534}.booking-state.payment-due .payment-switch{border-color:#f59e0b;background:#fffbeb}@media(max-width:600px){.state-switches{grid-template-columns:1fr}}
+    .delivery-options{padding:15px;border:2px solid #dbe5f0;border-radius:14px;background:#f8fbff}.delivery-options h4{margin:0;color:var(--brand);font-size:1rem}.delivery-options-intro{margin:4px 0 12px}.option-cards{display:grid;grid-template-columns:1fr;gap:10px}.option-card{padding:13px;border:2px solid #d9dfe6;border-radius:12px;background:#fff;transition:.2s}.option-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 4px 12px rgba(26,74,132,.09)}.option-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}.option-title{display:block;font-weight:800;color:#24364b}.option-subtitle{display:block;margin-top:3px;color:#667085;font-size:.82rem;font-weight:500}.option-toggle input{position:absolute;opacity:0;pointer-events:none}.switch-track{width:48px;height:27px;border-radius:999px;background:#cbd5e1;position:relative;flex:0 0 auto;transition:.2s}.switch-track:after{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}.option-toggle input:checked+.switch-track{background:var(--brand)}.option-toggle input:checked+.switch-track:after{transform:translateX(21px)}.option-toggle input:focus-visible+.switch-track{outline:3px solid #93c5fd;outline-offset:2px}.option-result{margin-top:10px;padding:8px 10px;border-radius:9px;background:#f1f5f9;color:#475569;font-size:.86rem;font-weight:750}.option-card.active .option-result{background:#dbeafe;color:#1e3a8a}.option-warning.active{border-color:#f59e0b;background:#fffbeb}.option-warning.active .option-result{background:#fef3c7;color:#92400e}
   </style>
 </head>
 <body>
@@ -238,14 +239,28 @@
 
       <div class="grid two">
         <div>
-          <label><input type="checkbox" id="doBoxCode" /> Kódovat schránku zároveň se SMS</label>
-          <div class="small muted">Pošle příkaz na <b>+420602783619</b> ve formátu <code>pin0000*xx*apc*xxxxxx*</code>.</div>
-
-          <!-- neodesílat kód hostovi (pošle se jen odkaz; schránku případně nakóduješ přes přepínač výše) -->
-          <div class="row">
-            <label class="small"><input type="checkbox" id="noSendBoxInLink" />
-              Neodesílat kód boxu hostovi (skrýt <code>?box=</code> v odkazu)
-            </label>
+          <div class="delivery-options">
+            <h4>Co se stane při odeslání</h4>
+            <div class="delivery-options-intro small muted">Každá volba řídí jinou část: zprávu hostovi a fyzickou schránku.</div>
+            <div class="option-cards">
+              <div id="guestCodeOption" class="option-card option-warning">
+                <label class="option-toggle" for="noSendBoxInLink">
+                  <span><span class="option-title">Skrýt kód hostovi</span><span class="option-subtitle">Odkaz nebude obsahovat kód schránky</span></span>
+                  <input type="checkbox" id="noSendBoxInLink" />
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+                <div id="guestCodeResult" class="option-result">Host obdrží odkaz včetně kódu.</div>
+              </div>
+              <div id="boxCodeOption" class="option-card">
+                <label class="option-toggle" for="doBoxCode">
+                  <span><span class="option-title">Zároveň kódovat schránku</span><span class="option-subtitle">Platí při tlačítku „Odeslat SMS“</span></span>
+                  <input type="checkbox" id="doBoxCode" />
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+                <div id="boxCodeResult" class="option-result">Schránka se nyní nebude kódovat.</div>
+              </div>
+            </div>
+            <div class="small muted" style="margin-top:10px">Kódování odešle technický příkaz do zvolené schránky. Host tento příkaz nikdy neuvidí.</div>
           </div>
         </div>
         <div>
@@ -379,6 +394,24 @@
         : due
           ? 'Check-in dokončen, platba ještě zbývá.'
           : 'Check-in dokončen a platba je vyřízená.';
+    }
+
+    function updateDeliveryOptions(){
+      const hideGuestCode = !!Q('#noSendBoxInLink')?.checked;
+      const programLocker = !!Q('#doBoxCode')?.checked;
+
+      Q('#guestCodeOption')?.classList.toggle('active', hideGuestCode);
+      Q('#boxCodeOption')?.classList.toggle('active', programLocker);
+      if(Q('#guestCodeResult')){
+        Q('#guestCodeResult').textContent = hideGuestCode
+          ? 'Host obdrží odkaz bez kódu schránky.'
+          : 'Host obdrží odkaz včetně kódu schránky.';
+      }
+      if(Q('#boxCodeResult')){
+        Q('#boxCodeResult').textContent = programLocker
+          ? 'Po odeslání SMS se nakóduje vybraná schránka.'
+          : 'Schránka se nyní nebude kódovat.';
+      }
     }
 
     function gen(){
@@ -926,10 +959,11 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(t.id === 'histLoad') loadHistory();
     });
 
-    // při přepnutí "neposílat kód" znovu přegenerovat texty/URL
+    // Přepínače způsobu odeslání
     document.addEventListener('change', e=>{
-      if(e.target && e.target.id === 'noSendBoxInLink'){
-        gen();
+      if(e.target && (e.target.id === 'noSendBoxInLink' || e.target.id === 'doBoxCode')){
+        updateDeliveryOptions();
+        if(e.target.id === 'noSendBoxInLink') gen();
       }
     });
 
@@ -953,6 +987,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     loadLockerNoIntoField();
     refreshLockerCmdPreview();
     renderLockerTable();
+    updateDeliveryOptions();
   </script>
 
   <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
