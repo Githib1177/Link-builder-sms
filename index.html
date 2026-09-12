@@ -294,19 +294,9 @@
     <!-- HISTORIE SMS (CLOUD) -->
     <div class="card">
       <h3 style="margin-top:0;color:#1a4a84">Historie odeslaných SMS</h3>
-      <div class="grid two">
-        <div>
-          <label>API základna</label>
-          <input id="histApi" value="/api" />
-        </div>
-        <div>
-          <label>Přístupový token</label>
-          <input id="histToken" placeholder="SMSHIST_TOKEN" />
-          <div class="small muted">Uloží se do tohoto prohlížeče (localStorage).</div>
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="histLoad">Načíst historii</button>
+      <div class="small muted">Historie je společná pro všechna přihlášená zařízení a načítá se automaticky.</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="histLoad">Obnovit historii</button>
       </div>
       <div id="histTable" class="out" style="max-height:260px;overflow:auto;white-space:normal"></div>
     </div>
@@ -326,7 +316,10 @@
       try{
         const response = await fetch('/api/auth', {credentials:'same-origin'});
         const data = await response.json();
-        if(data.ok) gate.classList.add('hidden');
+        if(data.ok){
+          gate.classList.add('hidden');
+          loadHistory();
+        }
       }catch(e){}
     }
 
@@ -343,6 +336,8 @@
         if(!response.ok || !data.ok) throw new Error(data.error || 'Přihlášení se nezdařilo');
         document.querySelector('#loginGate').classList.add('hidden');
         document.querySelector('#appPassword').value = '';
+        status.textContent = '';
+        loadHistory();
       }catch(error){ status.textContent = error.message; }
     });
     initializeLogin();
@@ -548,21 +543,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     }
 
     // ===== HISTORIE SMS (cloud) =====
-    function histCfg(){
-      const api = (Q('#histApi')?.value || '/api').replace(/\/+$/,'');
-      const token = (Q('#histToken')?.value || '').trim();
-      try{ localStorage.setItem('falconi_sms_cloud', JSON.stringify({api, token})); }catch(e){}
-      return { api, token };
-    }
-    function loadHistCfg(){
-      try{
-        const raw = localStorage.getItem('falconi_sms_cloud');
-        if(!raw) return;
-        const d = JSON.parse(raw);
-        if(d.api && Q('#histApi')) Q('#histApi').value = d.api;
-        if(d.token && Q('#histToken')) Q('#histToken').value = d.token;
-      }catch(e){}
-    }
     function renderHistory(rows){
       const el = Q('#histTable'); if(!el) return;
       if(!rows || rows.length===0){ el.innerHTML = '<span class="muted">Zatím nic.</span>'; return; }
@@ -631,13 +611,13 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     }
 
     async function loadHistory(){
-      const { api, token } = histCfg();
       const el = Q('#histTable'); if(el) el.textContent = 'Načítám…';
-      if(!token){ if(el) el.textContent = 'Zadej token.'; return; }
       try{
-        const r = await fetch(`${api}/sms-history`, { headers: { Authorization: `Bearer ${token}` }});
-        const data = await r.json().catch(()=>[]);
-        const rows = Array.isArray(data) ? data : [];
+        const r = await fetch('/api/sms-history', { credentials:'same-origin' });
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.error || 'Historii se nepodařilo načíst.');
+        if(!Array.isArray(data)) throw new Error('Historie vrátila neplatná data.');
+        const rows = data;
         renderHistory(rows);                 // zachováno původní zobrazení
         updateLockerStateFromHistory(rows);  // ✦ doplněno: propis stavu schránek
       }catch(e){
@@ -646,34 +626,24 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     }
 
     async function saveHistory(rec){
-      const { api, token } = histCfg();
-      if(!token) return;
-      try{
-        await fetch(`${api}/sms-history`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-          body: JSON.stringify(rec)
-        });
-      }catch(e){ /* ticho */ }
+      const response = await fetch('/api/sms-history', {
+        method:'POST', credentials:'same-origin',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(rec)
+      });
+      const data = await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error || 'Záznam se nepodařilo uložit do historie.');
+      return data;
     }
 
     async function saveLockerCloudEvent(lockerNo, boxCode, cmd){
-      const { api, token } = histCfg();
-      if(!token) return;
-      try{
-        const id    = 'locker_' + Date.now() + '_' + lockerNo;
-        const ts    = Date.now();
-        const guest = (Q('#guest')?.value || '').trim();
-        const to    = [BOX_DEST];
-        const lang  = 'locker';
-        const text  = `Kódování schránky #${lockerNo} → ${boxCode} | ${cmd}`;
-
-        await fetch(`${api}/sms-history`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-          body: JSON.stringify({ id, ts, guest, lang, to, text })
-        });
-      }catch(e){}
+      const id    = 'locker_' + Date.now() + '_' + lockerNo;
+      const ts    = Date.now();
+      const guest = (Q('#guest')?.value || '').trim();
+      const to    = [BOX_DEST];
+      const lang  = 'locker';
+      const text  = `Kódování schránky #${lockerNo} → ${boxCode} | ${cmd}`;
+      return saveHistory({ id, ts, guest, lang, to, text });
     }
 
     // ===== KÓDOVÁNÍ SCHRÁNEK =====
@@ -983,7 +953,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     // init
     load();
     gen();
-    loadHistCfg();
     loadLockerNoIntoField();
     refreshLockerCmdPreview();
     renderLockerTable();
