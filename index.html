@@ -38,6 +38,7 @@
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;margin-left:6px;font-size:.8rem}
     .booking-state{margin-top:14px;padding:14px;border:2px solid #fca5a5;border-radius:14px;background:#fff1f2;transition:.2s}.booking-state.done{border-color:#86efac;background:#ecfdf5}.state-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}.state-switch{display:flex;align-items:center;gap:9px;padding:11px;border:2px solid #e5e7eb;border-radius:11px;background:#fff;cursor:pointer}.state-switch input{width:20px;height:20px;accent-color:var(--brand)}.state-note{margin-top:9px;font-weight:800;color:#991b1b}.booking-state.done .state-note{color:#166534}.booking-state.payment-due .payment-switch{border-color:#f59e0b;background:#fffbeb}@media(max-width:600px){.state-switches{grid-template-columns:1fr}}
     .delivery-options{padding:15px;border:2px solid #dbe5f0;border-radius:14px;background:#f8fbff}.delivery-options h4{margin:0;color:var(--brand);font-size:1rem}.delivery-options-intro{margin:4px 0 12px}.option-cards{display:grid;grid-template-columns:1fr;gap:10px}.option-card{padding:13px;border:2px solid #d9dfe6;border-radius:12px;background:#fff;transition:.2s}.option-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 4px 12px rgba(26,74,132,.09)}.option-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}.option-title{display:block;font-weight:800;color:#24364b}.option-subtitle{display:block;margin-top:3px;color:#667085;font-size:.82rem;font-weight:500}.option-toggle input{position:absolute;opacity:0;pointer-events:none}.switch-track{width:48px;height:27px;border-radius:999px;background:#cbd5e1;position:relative;flex:0 0 auto;transition:.2s}.switch-track:after{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}.option-toggle input:checked+.switch-track{background:var(--brand)}.option-toggle input:checked+.switch-track:after{transform:translateX(21px)}.option-toggle input:focus-visible+.switch-track{outline:3px solid #93c5fd;outline-offset:2px}.option-result{margin-top:10px;padding:8px 10px;border-radius:9px;background:#f1f5f9;color:#475569;font-size:.86rem;font-weight:750}.option-card.active .option-result{background:#dbeafe;color:#1e3a8a}.option-warning.active{border-color:#f59e0b;background:#fffbeb}.option-warning.active .option-result{background:#fef3c7;color:#92400e}
+    .history-row{cursor:pointer;transition:background .15s}.history-row:hover,.history-row:focus{background:#eaf2fb;outline:none}.history-row:focus{box-shadow:inset 3px 0 var(--brand)}.history-row-disabled{opacity:.72}.history-loaded{color:#166534;font-weight:750}
   </style>
 </head>
 <body>
@@ -294,9 +295,10 @@
     <!-- HISTORIE SMS (CLOUD) -->
     <div class="card">
       <h3 style="margin-top:0;color:#1a4a84">Historie odeslaných SMS</h3>
-      <div class="small muted">Historie je společná pro všechna přihlášená zařízení a načítá se automaticky.</div>
+      <div class="small muted">Historie je společná pro všechna přihlášená zařízení. Kliknutím na odeslanou zprávu načtete rezervaci zpět do formuláře.</div>
       <div class="row" style="margin-top:12px">
         <button class="btn" id="histLoad">Obnovit historii</button>
+        <span id="historyLoadStatus" class="small"></span>
       </div>
       <div id="histTable" class="out" style="max-height:260px;overflow:auto;white-space:normal"></div>
     </div>
@@ -543,9 +545,55 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     }
 
     // ===== HISTORIE SMS (cloud) =====
+    let loadedHistoryRows = [];
+
+    function historyLink(record){
+      if(record?.link) return String(record.link);
+      const match = String(record?.text || '').match(/https?:\/\/[^\s]+/i);
+      return match ? match[0] : '';
+    }
+
+    function loadReservationFromHistory(record){
+      const link = historyLink(record);
+      if(!link) return;
+
+      let parsed;
+      try{ parsed = new URL(link, window.location.origin); }
+      catch(_error){ return; }
+
+      Q('#guest').value = record.guest || '';
+      Q('#smsTo').value = Array.isArray(record.to) ? record.to.join(', ') : '';
+
+      const language = String(record.lang || '').toLowerCase().split('-')[0];
+      if(['cz','en','de'].includes(language)) Q('#smsLang').value = language;
+
+      Q('#alf').value = parsed.searchParams.get('alf') || '';
+      Q('#box').value = parsed.searchParams.get('box') || '';
+      Q('#done').checked = parsed.searchParams.has('done');
+      Q('#unpaid').checked = parsed.searchParams.has('unpaid');
+      Q('#isFemale').checked = /\b(Paní|Ms|Frau)\b/i.test(String(record.text || ''));
+      if(Q('#noSendBoxInLink')) Q('#noSendBoxInLink').checked = false;
+      if(Q('#doBoxCode')) Q('#doBoxCode').checked = false;
+
+      updateBookingState();
+      updateDeliveryOptions();
+      refreshLockerCmdPreview();
+      gen();
+
+      const status = Q('#historyLoadStatus');
+      if(status){
+        const name = record.guest ? ` – ${record.guest}` : '';
+        status.textContent = `✓ Rezervace načtena${name}`;
+        status.className = 'small history-loaded';
+      }
+      Q('#guest').scrollIntoView({behavior:'smooth', block:'center'});
+      Q('#guest').focus({preventScroll:true});
+    }
+
     function renderHistory(rows){
       const el = Q('#histTable'); if(!el) return;
       if(!rows || rows.length===0){ el.innerHTML = '<span class="muted">Zatím nic.</span>'; return; }
+      loadedHistoryRows = rows;
       const esc = s => String(s||'').replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[m]));
       const html = [
         '<table style="width:100%;border-collapse:collapse;font-size:13px">',
@@ -556,10 +604,11 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
         '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Jazyk</th>',
         '</tr></thead><tbody>'
       ];
-      rows.forEach(r=>{
+      rows.forEach((r, index)=>{
         const dt = new Date(Number(r.ts)||Date.now());
+        const canLoad = Boolean(historyLink(r));
         html.push(
-          '<tr>',
+          `<tr class="${canLoad ? 'history-row' : 'history-row-disabled'}"${canLoad ? ` data-history-index="${index}" tabindex="0" role="button" title="Načíst rezervaci do formuláře"` : ''}>`,
           `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${dt.toLocaleString()}</td>`,
           `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc((r.to||[]).join(', '))}</td>`,
           `<td style="padding:6px;border-bottom:1px solid #f1f5f9;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.text||'')}</td>`,
@@ -569,6 +618,15 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       });
       html.push('</tbody></table>');
       el.innerHTML = html.join('');
+    }
+
+    function activateHistoryRow(target){
+      const row = target.closest?.('[data-history-index]');
+      if(!row) return false;
+      const index = Number.parseInt(row.dataset.historyIndex, 10);
+      const record = loadedHistoryRows[index];
+      if(record) loadReservationFromHistory(record);
+      return Boolean(record);
     }
 
     // ⟶ NOVÉ: z rekordů v historii vytáhne stav schránek a promítne do tabulky
@@ -927,6 +985,11 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
       // historie
       if(t.id === 'histLoad') loadHistory();
+      activateHistoryRow(t);
+    });
+
+    document.addEventListener('keydown', e=>{
+      if((e.key === 'Enter' || e.key === ' ') && activateHistoryRow(e.target)) e.preventDefault();
     });
 
     // Přepínače způsobu odeslání
