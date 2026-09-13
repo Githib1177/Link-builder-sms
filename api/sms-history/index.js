@@ -40,13 +40,24 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const requestedLimit = Number.parseInt(String(req.query?.limit || '50'), 10);
       const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 50, 1), 200);
-      const rows = await sql`
+      const recentRows = await sql`
         SELECT id, ts, guest, lang, to_numbers, text_body, link,
                action_type, locker_no, room_no, box_code, result_status
         FROM sms_history
         ORDER BY ts DESC
         LIMIT ${limit};
       `;
+      // Stav schránek musí zůstat dostupný i po zaplnění běžného limitu historie.
+      const lockerRows = req.query?.includeLockers === '1' ? await sql`
+        SELECT id, ts, guest, lang, to_numbers, text_body, link,
+               action_type, locker_no, room_no, box_code, result_status
+        FROM sms_history
+        WHERE lang = 'locker' OR action_type = 'locker'
+        ORDER BY ts DESC
+        LIMIT 100;
+      ` : [];
+      const rows = [...new Map([...recentRows, ...lockerRows].map(row => [row.id, row])).values()]
+        .sort((a, b) => Number(b.ts) - Number(a.ts));
       return res.status(200).json(rows.map(row => ({
         id: row.id,
         ts: Number(row.ts),

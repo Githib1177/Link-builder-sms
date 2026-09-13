@@ -711,7 +711,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
     async function loadHistory(){
       const el = Q('#histTable'); if(el) el.textContent = 'Načítám…';
       try{
-        const r = await fetch('/api/sms-history?limit=200', { credentials:'same-origin' });
+        const r = await fetch('/api/sms-history?limit=200&includeLockers=1', { credentials:'same-origin' });
         const data = await r.json().catch(()=>({}));
         if(!r.ok) throw new Error(data.error || 'Historii se nepodařilo načíst.');
         if(!Array.isArray(data)) throw new Error('Historie vrátila neplatná data.');
@@ -912,7 +912,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       addConfirmationFact(
         facts,
         'Stav rezervace',
-        !complete ? 'Check-in není dokončen' : (due ? 'Check-in hotový, platba zbývá' : 'Check-in i platba hotovy'),
+        !complete ? 'Check-in není dokončen' : (due ? 'Check-in hotový, platba zbývá' : 'Check-in i platba hotové'),
         complete && !due ? 'good' : 'warn'
       );
       addConfirmationFact(
