@@ -1085,11 +1085,15 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       const box  = (Q('#box')?.value || '').trim();
       const lang = (Q('#smsLang')?.value || 'cz');
       const seg  = (lang === 'en') ? 'en' : (lang === 'de' ? 'de' : 'cs');
+      const params = new URLSearchParams();
       if(includeBox){
         if(!/^\d{6}$/.test(box)) return '';
-        return `${base}/${seg}/codes/?box=${encodeURIComponent(box)}`;
+        params.set('box', box);
       }
-      return `${base}/${seg}/codes/`;
+      const alf = deriveAlfUrl((Q('#alf')?.value || '').trim());
+      if(alf) params.set('alf', alf);
+      const query = params.toString();
+      return `${base}/${seg}/codes/${query ? '?' + query : ''}`;
     }
     function codesPrefix(lang, includeBox){
       if(includeBox){
