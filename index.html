@@ -403,6 +403,8 @@
     function updateBookingState(){
       const complete = Q('#done').checked;
       const due = Q('#unpaid').checked;
+      Q('#noSendBoxInLink').checked = !complete || due;
+      updateDeliveryOptions();
       const card = Q('#bookingState');
       card.classList.toggle('done', complete);
       card.classList.toggle('payment-due', complete && due);
@@ -597,7 +599,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       Q('#done').checked = parsed.searchParams.has('done');
       Q('#unpaid').checked = parsed.searchParams.has('unpaid');
       Q('#isFemale').checked = /\b(Paní|Ms|Frau)\b/i.test(String(record.text || ''));
-      if(Q('#noSendBoxInLink')) Q('#noSendBoxInLink').checked = false;
       if(Q('#doBoxCode')) Q('#doBoxCode').checked = false;
 
       updateBookingState();
@@ -1198,6 +1199,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
           if(!el) return;
           if(el.type==='checkbox') el.checked=false; else el.value='';
         });
+        updateBookingState();
         gen();
       }
       if(t.id === 'save') save();
@@ -1260,6 +1262,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
     // init
     load();
+    updateBookingState();
     gen();
     loadLockerNoIntoField();
     refreshLockerCmdPreview();
