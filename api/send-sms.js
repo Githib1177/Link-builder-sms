@@ -60,7 +60,7 @@ async function callGateway({ method, endpoint, query, body }) {
 }
 
 // ---------- Odeslání jedné SMS ----------
-async function sendStrategies({ login, password, number, text }) {
+async function sendStrategies({ login, password, number, text, allowRetry = true }) {
   const plain = String(text).replace(/[\r\n]+/g, ' ').trim();
   const ascii = stripDiacritics(plain);
   const ENDPOINTS = [
@@ -69,7 +69,7 @@ async function sendStrategies({ login, password, number, text }) {
   ];
   let lastError;
 
-  for (const ep of ENDPOINTS) {
+  for (const ep of (allowRetry ? ENDPOINTS : ENDPOINTS.slice(0, 1))) {
     try {
       const result = await callGateway({
         method: 'GET',
@@ -99,7 +99,19 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ ok: false, error: 'Přihlášení vypršelo' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { to, text } = req.body || {};
+  let { to, text } = req.body || {};
+  const openLocker = req.body?.action === 'open-locker';
+  if (openLocker) {
+    const locker = req.body.locker;
+    if (!Number.isInteger(locker) || locker < 1 || locker > 8) {
+      return res.status(400).json({ ok: false, error: 'Vyberte box 1 až 8.' });
+    }
+    // Same controller and PIN as the existing locker programming integration.
+    const pin = process.env.SELAX_PIN || '0000';
+    if (!/^\d{4}$/.test(pin)) return res.status(500).json({ ok: false, error: 'Neplatné nastavení PIN schránky.' });
+    to = ['+420602783619'];
+    text = `**pin${pin}*${String(locker).padStart(2, '0')}*nb*`;
+  }
   console.log('[send-sms] request received', {
     recipients: Array.isArray(to) ? to.length : (to ? 1 : 0),
     messageLength: String(text || '').length,
@@ -127,7 +139,7 @@ export default async function handler(req, res) {
   try {
     const results = [];
     for (const n of numbers) {
-      const r = await sendStrategies({ login: LOGIN, password: PASSWORD, number: n, text });
+      const r = await sendStrategies({ login: LOGIN, password: PASSWORD, number: n, text, allowRetry: !openLocker });
       results.push({ number: n, ...r });
     }
     const successfulNumbers = results.filter(r => r.err === 0).map(r => r.number);

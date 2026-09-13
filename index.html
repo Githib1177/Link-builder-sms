@@ -323,6 +323,9 @@
     <!-- Stav schránek (lokální přehled 1–8) -->
     <div class="card">
       <h3 style="margin-top:0;color:#1a4a84">Stav schránek (1–8)</h3>
+      <div class="small muted">Otevření schránky pro vložení nebo vyzvednutí klíče. Před odesláním vybraný box potvrdíte.</div>
+      <div id="openLockerButtons" class="row" role="group" aria-label="Otevřít schránku"></div>
+      <div id="openLockerStatus" class="result-panel hidden" role="status" aria-live="polite"></div>
       <div id="lockerTable" class="out" style="white-space:normal"></div>
     </div>
 
@@ -818,6 +821,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
     function setSendingState(active){
       sendInProgress = active;
+      document.querySelectorAll('[data-open-locker]').forEach(button => { button.disabled = active; });
       ['#sendSMS','#sendCodesLink','#retryLocker'].forEach(selector=>{
         const button = Q(selector);
         if(button) button.disabled = active;
@@ -829,6 +833,43 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       if(!panel) return;
       panel.textContent = message;
       panel.className = `result-panel${tone ? ` ${tone}` : ''}`;
+    }
+
+    for(let locker = 1; locker <= 8; locker++){
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-ghost';
+      button.dataset.openLocker = String(locker);
+      button.textContent = `Box ${locker}`;
+      button.setAttribute('aria-label', `Otevřít box ${locker}`);
+      Q('#openLockerButtons').append(button);
+    }
+
+    async function openLocker(locker){
+      if(sendInProgress || !Number.isInteger(locker) || locker < 1 || locker > 8) return;
+      if(!window.confirm(`Otevřít box ${locker}?\n\nOdešle se SMS do schránky Selax. Kód hosta se nezmění.`)) return;
+      setSendingState(true);
+      const status = Q('#openLockerStatus');
+      status.className = 'result-panel';
+      status.textContent = `Odesílám příkaz pro box ${locker}…`;
+      try{
+        const response = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'open-locker', locker })
+        });
+        const result = await response.json();
+        if(!response.ok || !result.ok) throw new Error(result.error || 'Brána nepotvrdila přijetí příkazu.');
+        status.className = 'result-panel good';
+        status.textContent = `Box ${locker}: příkaz odeslán. Skutečné otevření ověřte u schránky nebo v její odpovědní SMS.`;
+      }catch(error){
+        status.className = 'result-panel warn';
+        status.textContent = `Box ${locker}: odeslání se nepodařilo potvrdit. ${error.message || ''} Před opakováním ověřte stav schránky.`;
+      }finally{
+        // Manufacturer recommends a 3–5 second interval between commands.
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        setSendingState(false);
+      }
     }
 
     async function sendLockerCommand(force=false){
@@ -1146,6 +1187,8 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
     document.addEventListener('click', e=>{
       const t = e.target;
+      const openButton = t.closest?.('[data-open-locker]');
+      if(openButton){ openLocker(Number(openButton.dataset.openLocker)); return; }
       if(t.id === 'gen') gen();
       if(t.id === 'clear'){
         ['alf','box','guest','done','unpaid','isFemale'].forEach(id => {
