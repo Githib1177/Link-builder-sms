@@ -41,6 +41,7 @@
     .booking-state{margin-top:14px;padding:14px;border:2px solid #fca5a5;border-radius:14px;background:#fff1f2;transition:.2s}.booking-state.done{border-color:#86efac;background:#ecfdf5}.state-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}.state-switch{display:flex;align-items:center;gap:9px;padding:11px;border:2px solid #e5e7eb;border-radius:11px;background:#fff;cursor:pointer}.state-switch input{width:20px;height:20px;accent-color:var(--brand)}.state-note{margin-top:9px;font-weight:800;color:#991b1b}.booking-state.done .state-note{color:#166534}.booking-state.payment-due .payment-switch{border-color:#f59e0b;background:#fffbeb}@media(max-width:600px){.state-switches{grid-template-columns:1fr}}
     .delivery-options{padding:15px;border:2px solid #dbe5f0;border-radius:14px;background:#f8fbff}.delivery-options h4{margin:0;color:var(--brand);font-size:1rem}.delivery-options-intro{margin:4px 0 12px}.option-cards{display:grid;grid-template-columns:1fr;gap:10px}.option-card{padding:13px;border:2px solid #d9dfe6;border-radius:12px;background:#fff;transition:.2s}.option-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 4px 12px rgba(26,74,132,.09)}.option-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}.option-title{display:block;font-weight:800;color:#24364b}.option-subtitle{display:block;margin-top:3px;color:#667085;font-size:.82rem;font-weight:500}.option-toggle input{position:absolute;opacity:0;pointer-events:none}.switch-track{width:48px;height:27px;border-radius:999px;background:#cbd5e1;position:relative;flex:0 0 auto;transition:.2s}.switch-track:after{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}.option-toggle input:checked+.switch-track{background:var(--brand)}.option-toggle input:checked+.switch-track:after{transform:translateX(21px)}.option-toggle input:focus-visible+.switch-track{outline:3px solid #93c5fd;outline-offset:2px}.option-result{margin-top:10px;padding:8px 10px;border-radius:9px;background:#f1f5f9;color:#475569;font-size:.86rem;font-weight:750}.option-card.active .option-result{background:#dbeafe;color:#1e3a8a}.option-warning.active{border-color:#f59e0b;background:#fffbeb}.option-warning.active .option-result{background:#fef3c7;color:#92400e}
     .history-row{cursor:pointer;transition:background .15s}.history-row:hover,.history-row:focus{background:#eaf2fb;outline:none}.history-row:focus{box-shadow:inset 3px 0 var(--brand)}.history-row-disabled{opacity:.72}.history-loaded{color:#166534;font-weight:750}
+    .send-confirm{width:min(560px,calc(100% - 28px));max-height:calc(100vh - 28px);padding:0;border:0;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.34);color:var(--ink)}.send-confirm::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(2px)}.send-confirm-head{padding:20px 22px 14px;border-bottom:1px solid #e5e7eb}.send-confirm-head h3{margin:0;color:var(--brand);font-size:1.25rem}.send-confirm-head p{margin:6px 0 0}.send-confirm-body{padding:18px 22px;overflow:auto}.confirm-facts{display:grid;gap:9px}.confirm-fact{display:flex;justify-content:space-between;gap:18px;padding:10px 12px;border-radius:10px;background:#f1f5f9}.confirm-fact strong{text-align:right}.confirm-fact.good{background:#ecfdf5;color:#166534}.confirm-fact.warn{background:#fff7ed;color:#9a3412}.confirm-message{margin-top:14px;padding:12px;border:1px solid #dbe5f0;border-radius:10px;background:#f8fbff;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.88rem;max-height:170px;overflow:auto}.send-confirm-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 20px;border-top:1px solid #e5e7eb}.send-confirm-actions button{min-width:130px}@media(max-width:520px){.confirm-fact{display:block}.confirm-fact strong{display:block;text-align:left;margin-top:3px}.send-confirm-actions{display:grid;grid-template-columns:1fr 1fr}.send-confirm-actions button{min-width:0}}
   </style>
 </head>
 <body>
@@ -53,6 +54,21 @@
       <div id="loginStatus" class="small" style="margin-top:10px;color:#b91c1c"></div>
     </form>
   </div>
+  <dialog id="sendConfirm" class="send-confirm" aria-labelledby="sendConfirmTitle">
+    <div class="send-confirm-head">
+      <h3 id="sendConfirmTitle">Kontrola před odesláním</h3>
+      <p class="muted small">Zkontrolujte, co aplikace skutečně odešle a provede.</p>
+    </div>
+    <div class="send-confirm-body">
+      <div id="sendConfirmFacts" class="confirm-facts"></div>
+      <div class="small muted" style="margin-top:14px;font-weight:700">Text zprávy hostovi</div>
+      <div id="sendConfirmMessage" class="confirm-message"></div>
+    </div>
+    <form method="dialog" class="send-confirm-actions">
+      <button value="cancel" class="btn-ghost">Zpět a upravit</button>
+      <button value="confirm" class="btn">Potvrdit a odeslat</button>
+    </form>
+  </dialog>
   <div class="wrap">
     <div style="text-align:center; margin-bottom:20px;">
       <img src="https://files.previo.cz/85/www/logo.png" alt="Pension Falconi" style="max-width:200px; height:auto; display:block; margin:0 auto 10px;" />
@@ -831,6 +847,49 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
     }
 
+    function addConfirmationFact(container, label, value, tone){
+      const row = document.createElement('div');
+      row.className = `confirm-fact${tone ? ` ${tone}` : ''}`;
+      const labelEl = document.createElement('span');
+      const valueEl = document.createElement('strong');
+      labelEl.textContent = label;
+      valueEl.textContent = value;
+      row.append(labelEl, valueEl);
+      container.appendChild(row);
+    }
+
+    function confirmSending({ numbers, text, sendsBoxCode, programsLocker, lockerNo, roomNo, boxCode, sendType }){
+      const dialog = Q('#sendConfirm');
+      const facts = Q('#sendConfirmFacts');
+      facts.replaceChildren();
+
+      addConfirmationFact(facts, 'Akce', sendType || 'Odeslat SMS');
+      addConfirmationFact(facts, 'Příjemce', numbers.join(', '));
+      addConfirmationFact(
+        facts,
+        'Kód schránky v odkazu pro hosta',
+        sendsBoxCode ? `ANO – kód ${boxCode}` : 'NE',
+        sendsBoxCode ? 'good' : 'warn'
+      );
+      addConfirmationFact(
+        facts,
+        'Programování fyzické schránky',
+        programsLocker ? `ANO – schránka č. ${lockerNo}` : 'NE',
+        programsLocker ? 'good' : ''
+      );
+      if(programsLocker){
+        addConfirmationFact(facts, 'Nový kód schránky', boxCode);
+        addConfirmationFact(facts, 'Karta pro pokoj', roomNo || 'Pokoj není uveden', roomNo ? '' : 'warn');
+      }
+
+      Q('#sendConfirmMessage').textContent = text;
+      dialog.returnValue = 'cancel';
+      dialog.showModal();
+      return new Promise(resolve=>{
+        dialog.addEventListener('close', ()=>resolve(dialog.returnValue === 'confirm'), { once:true });
+      });
+    }
+
     // ===== Odeslání hlavní SMS hostům + (volitelně) kódování schránky =====
     async function sendSms(){
       const toRaw = Q('#smsTo').value.trim();
@@ -843,6 +902,26 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
 
       const numbers = normalizePhones(toRaw);
       if(numbers.length === 0){ statusEl.textContent = 'Žádné validní číslo (použij +420…).'; return; }
+
+      const programsLocker = !!Q('#doBoxCode')?.checked;
+      const builtLocker = buildLockerCmd();
+      if(programsLocker && (!builtLocker.lnOk || !builtLocker.six)){
+        statusEl.textContent = 'Pro kódování vyber schránku a zadej platný 6místný kód.';
+        return;
+      }
+
+      const boxCode = (Q('#box')?.value || '').trim();
+      const confirmed = await confirmSending({
+        numbers,
+        text,
+        sendsBoxCode: /[?&]box=/.test(text),
+        programsLocker,
+        lockerNo: (Q('#lockerNo')?.value || '').trim(),
+        roomNo: (Q('#roomNo')?.value || '').trim(),
+        boxCode,
+        sendType: 'Odeslat zprávu s pokyny'
+      });
+      if(!confirmed){ statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.'; return; }
 
       const unicode = isUnicodeSms(text);
       const singleLimit = unicode ? 70 : 160;
@@ -931,6 +1010,21 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
       }
 
       const text = `${codesPrefix(lang, !noSend)}\n${link}`;
+
+      const confirmed = await confirmSending({
+        numbers,
+        text,
+        sendsBoxCode: !noSend,
+        programsLocker: false,
+        lockerNo: '',
+        roomNo: '',
+        boxCode: (Q('#box')?.value || '').trim(),
+        sendType: 'Poslat pouze odkaz na kódy'
+      });
+      if(!confirmed){
+        if(statusEl) statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.';
+        return;
+      }
 
       try{
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
