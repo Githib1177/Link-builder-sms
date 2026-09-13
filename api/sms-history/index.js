@@ -13,9 +13,19 @@ async function ensureTable(sql) {
       lang TEXT,
       to_numbers TEXT,
       text_body TEXT,
-      link TEXT
+      link TEXT,
+      action_type TEXT,
+      locker_no TEXT,
+      room_no TEXT,
+      box_code TEXT,
+      result_status TEXT
     );
   `;
+  await sql`ALTER TABLE sms_history ADD COLUMN IF NOT EXISTS action_type TEXT;`;
+  await sql`ALTER TABLE sms_history ADD COLUMN IF NOT EXISTS locker_no TEXT;`;
+  await sql`ALTER TABLE sms_history ADD COLUMN IF NOT EXISTS room_no TEXT;`;
+  await sql`ALTER TABLE sms_history ADD COLUMN IF NOT EXISTS box_code TEXT;`;
+  await sql`ALTER TABLE sms_history ADD COLUMN IF NOT EXISTS result_status TEXT;`;
 }
 
 export default async function handler(req, res) {
@@ -31,7 +41,8 @@ export default async function handler(req, res) {
       const requestedLimit = Number.parseInt(String(req.query?.limit || '50'), 10);
       const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 50, 1), 200);
       const rows = await sql`
-        SELECT id, ts, guest, lang, to_numbers, text_body, link
+        SELECT id, ts, guest, lang, to_numbers, text_body, link,
+               action_type, locker_no, room_no, box_code, result_status
         FROM sms_history
         ORDER BY ts DESC
         LIMIT ${limit};
@@ -43,26 +54,38 @@ export default async function handler(req, res) {
         lang: row.lang || '',
         to: fromCsv(row.to_numbers),
         text: row.text_body || '',
-        link: row.link || ''
+        link: row.link || '',
+        actionType: row.action_type || '',
+        lockerNo: row.locker_no || '',
+        roomNo: row.room_no || '',
+        boxCode: row.box_code || '',
+        resultStatus: row.result_status || ''
       })));
     }
 
     if (req.method === 'POST') {
-      const { id, ts, guest, lang, to, text, link } = req.body || {};
+      const { id, ts, guest, lang, to, text, link, actionType, lockerNo, roomNo, boxCode, resultStatus } = req.body || {};
       if (!id || !ts || !text || !Array.isArray(to)) {
         return res.status(400).json({ error: 'Chybí povinné údaje historie.' });
       }
       await sql`
-        INSERT INTO sms_history (id, ts, guest, lang, to_numbers, text_body, link)
+        INSERT INTO sms_history (id, ts, guest, lang, to_numbers, text_body, link,
+                                 action_type, locker_no, room_no, box_code, result_status)
         VALUES (${id}, ${String(ts)}, ${guest ?? null}, ${lang ?? null},
-                ${toCsv(to)}, ${text}, ${link ?? null})
+                ${toCsv(to)}, ${text}, ${link ?? null}, ${actionType ?? null},
+                ${lockerNo ?? null}, ${roomNo ?? null}, ${boxCode ?? null}, ${resultStatus ?? null})
         ON CONFLICT (id) DO UPDATE SET
           ts = EXCLUDED.ts,
           guest = EXCLUDED.guest,
           lang = EXCLUDED.lang,
           to_numbers = EXCLUDED.to_numbers,
           text_body = EXCLUDED.text_body,
-          link = EXCLUDED.link;
+          link = EXCLUDED.link,
+          action_type = EXCLUDED.action_type,
+          locker_no = EXCLUDED.locker_no,
+          room_no = EXCLUDED.room_no,
+          box_code = EXCLUDED.box_code,
+          result_status = EXCLUDED.result_status;
       `;
       return res.status(200).json({ ok: true, id });
     }

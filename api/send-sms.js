@@ -130,12 +130,19 @@ export default async function handler(req, res) {
       const r = await sendStrategies({ login: LOGIN, password: PASSWORD, number: n, text });
       results.push({ number: n, ...r });
     }
-    const ok = results.some(r => r.err === 0);
-    const last = results[results.length - 1];
+    const successfulNumbers = results.filter(r => r.err === 0).map(r => r.number);
+    const failed = results.filter(r => r.err !== 0);
+    const failedNumbers = failed.map(r => r.number);
+    const ok = successfulNumbers.length === results.length;
+    const partial = successfulNumbers.length > 0 && failedNumbers.length > 0;
+    const firstFailure = failed[0];
     return res.status(200).json({
       ok,
+      partial,
       results,
-      error: ok ? undefined : `SMSBrána: ${last?.errMessage || 'chyba'} (kód ${last?.err ?? '?'})`,
+      successfulNumbers,
+      failedNumbers,
+      error: ok ? undefined : `SMSBrána: ${firstFailure?.errMessage || 'chyba'} (kód ${firstFailure?.err ?? '?'})`,
     });
   } catch (e) {
     console.error('[send-sms] ERROR', e);
