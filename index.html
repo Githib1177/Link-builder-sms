@@ -473,17 +473,17 @@
       const lastName = getLastName(guest);
       const czHello = czGreeting();
 
-      const czLine = unpaid
+      const czLine = !done ? (unpaid ? 'prosíme o online check-in a platbu. Pokyny:' : 'prosíme o online check-in. Pokyny:') : unpaid
         ? 'check-in je hotový, zbývá doplatit. Pokyny:'
         : (done ? 'check-in je hotový. Pokyny:' : 'prosíme o online check-in a platbu. Pokyny:');
 
       const enName = lastName ? (isFemale ? `Ms ${lastName}` : `Mr ${lastName}`) : 'Guest';
-      const enLine = unpaid
+      const enLine = !done ? (unpaid ? 'please complete your online check-in and payment. Instructions:' : 'please complete your online check-in. Instructions:') : unpaid
         ? 'your check-in is completed; payment is still due. Instructions:'
         : (done ? 'your check-in is completed. Instructions:' : 'please complete your online check-in and payment. Instructions:');
 
       const deName = lastName ? (isFemale ? `Frau ${lastName}` : `Herr ${lastName}`) : 'Gast';
-      const deLine = unpaid
+      const deLine = !done ? (unpaid ? 'bitte führen Sie den Online-Check-in und die Zahlung durch. Anweisungen:' : 'bitte führen Sie den Online-Check-in durch. Anweisungen:') : unpaid
         ? 'Ihr Check-in ist abgeschlossen; die Zahlung steht noch aus. Anweisungen:'
         : (done ? 'Ihr Check-in wurde bereits abgeschlossen. Anweisungen:' : 'bitte führen Sie den Online-Check-in und die Zahlung durch. Anweisungen:');
 
@@ -502,26 +502,26 @@ ${urlDE}`;
       Q('#mailCZ').value =
 `${czHello}
 
-${unpaid ? 'děkujeme za dokončení online check-inu. Zbývá uhradit platbu.' : (done ? 'děkujeme za dokončení online check-inu.' : 'prosíme o dokončení online check-inu a platby.')}
+${!done ? (unpaid ? 'prosíme o dokončení online check-inu a platby.' : 'prosíme o dokončení online check-inu.') : unpaid ? 'děkujeme za dokončení online check-inu. Zbývá uhradit platbu.' : (done ? 'děkujeme za dokončení online check-inu.' : 'prosíme o dokončení online check-inu a platby.')}
 Pokyny najdete zde: ${urlCZ}
 
-Recepce: +420 721 516 894 | E-mail: recepce@falconicz`;
+Recepce: +420 721 516 894 | E-mail: recepce@falconi.cz`;
 
       Q('#mailEN').value =
 `Dear ${enName},
 
-${unpaid ? 'thank you for completing the online check-in. Payment is still due.' : (done ? 'thank you for completing the online check-in.' : 'please complete your online check-in and payment.')}
+${!done ? (unpaid ? 'please complete your online check-in and payment.' : 'please complete your online check-in.') : unpaid ? 'thank you for completing the online check-in. Payment is still due.' : (done ? 'thank you for completing the online check-in.' : 'please complete your online check-in and payment.')}
 Find the instructions here: ${urlEN}
 
-Reception: +420 721 516 894 | Email: recepce@falconicz`;
+Reception: +420 721 516 894 | Email: recepce@falconi.cz`;
 
       Q('#mailDE').value =
 `Guten Tag ${deName},
 
-${unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung steht noch aus.' : 'vielen Dank für die Durchführung des Online-Check-ins.'}
+${!done ? (unpaid ? 'bitte führen Sie den Online-Check-in und die Zahlung durch.' : 'bitte führen Sie den Online-Check-in durch.') : unpaid ? 'vielen Dank für den abgeschlossenen Online-Check-in. Die Zahlung steht noch aus.' : 'vielen Dank für die Durchführung des Online-Check-ins.'}
 Die Anweisungen finden Sie hier: ${urlDE}
 
-Rezeption: +420 721 516 894 | E-Mail: recepce@falconicz`;
+Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
 
       // pouze přegenerovat náhled příkazu (žádné kódování zde)
       refreshLockerCmdPreview();
