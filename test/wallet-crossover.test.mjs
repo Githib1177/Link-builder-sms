@@ -35,7 +35,7 @@ test('cross-language original pages: 3 languages × 2 page types × 8 booking co
    let networkCalls=0;dom.window.fetch=()=>{networkCalls++;throw new Error('No background requests allowed');};
    dom.window.eval(widget);
    const card=root.querySelector('#falconi-wallet-save');assert.ok(card);assert.equal(root.querySelector('.status').nextElementSibling,card);
-   assert.equal(card.querySelector('a').textContent,{cs:'Uložit do Google Wallet',en:'Save to Google Wallet',de:'In Google Wallet speichern'}[lang]);
+   assert.equal(card.querySelector('a').getAttribute('aria-label'),{cs:'Uložit do Google Wallet',en:'Save to Google Wallet',de:'In Google Wallet speichern'}[lang]);
    const href=new URL(card.querySelector('a').href);assert.equal(href.origin,'https://falconi-messenger.vercel.app');assert.equal(href.searchParams.get('token'),token);assert.equal(href.searchParams.size,1);
    assert.equal(card.querySelector('a').rel,'noopener noreferrer');assert.equal(networkCalls,0);
    card.remove();assert.equal(root.textContent,before);assert.deepEqual([...root.querySelectorAll('a')].map(a=>a.href),links);

@@ -16,7 +16,12 @@
     section.style.cssText='background:#e5eef6;border-color:#bfd0df';
     const title=document.createElement('h2');title.textContent=text[0];
     const description=document.createElement('p');description.textContent=text[1];
-    const link=document.createElement('a');link.className='button';link.textContent=text[2];
+    const link=document.createElement('a');link.setAttribute('aria-label',text[2]);
+    link.style.cssText='display:inline-block;margin:8px;max-width:calc(100% - 16px);line-height:0';
+    const badge=document.createElement('img');badge.alt=text[2];
+    badge.src='https://falconi-messenger.vercel.app/assets/wallet/add-'+lang+'.svg';
+    badge.style.cssText='display:block;height:55px;width:auto;max-width:100%;object-fit:contain';
+    badge.referrerPolicy='no-referrer';link.append(badge);
     link.href='https://falconi-messenger.vercel.app/api/wallet-save?token='+encodeURIComponent(token);
     link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';
     const note=document.createElement('p');note.className='muted';note.style.cssText='font-size:13px;margin:12px 0 0';note.textContent=text[3];
