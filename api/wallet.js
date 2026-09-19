@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { isAuthorized } from './_auth.js';
 import { alfredDetails, buildWalletObject, accessDecision } from '../lib/wallet-pass.js';
 import { walletConfig, putWalletObject, walletSaveUrl } from '../lib/google-wallet.js';
+import { guestToken } from '../lib/wallet-guest-token.js';
 
 export function createWalletHandler({ connect=neon, getConfig=walletConfig, putObject=putWalletObject, makeSaveUrl=walletSaveUrl } = {}) {
 return async function handler(req,res) {
@@ -25,7 +26,7 @@ return async function handler(req,res) {
     const hash=createHash('sha256').update(alfred.code).digest('hex');
     await sql`INSERT INTO wallet_passes (alfred_hash,pass_id) VALUES (${hash},${randomUUID()}) ON CONFLICT (alfred_hash) DO NOTHING`;
     claim=randomUUID();
-    const rows=await sql`UPDATE wallet_passes SET claim=${claim},busy_until=${now+120000} WHERE alfred_hash=${hash} AND busy_until < ${now} RETURNING pass_id`;
+    const rows=await sql`UPDATE wallet_passes SET claim=${claim},busy_until=${now+120000},state=NULL WHERE alfred_hash=${hash} AND busy_until < ${now} RETURNING pass_id`;
     if(!rows.length)return res.status(409).json({error:'Tato karta se právě aktualizuje. Vyčkejte a zkuste to znovu.'});
     passId=rows[0].pass_id;
     const stay={passId,reservationId:hash,alfred:alfred.code,releaseAt,expiresAt,lockerAssignmentId:hash};
@@ -35,7 +36,7 @@ return async function handler(req,res) {
     await putObject(object,config);
     const state=accessDecision(stay,snapshot,locker,now);
     await sql`UPDATE wallet_passes SET state=${state},updated_at=${now},expires_at=${expiresAt} WHERE pass_id=${passId} AND claim=${claim}`;
-    return res.status(200).json({state,saveUrl:makeSaveUrl(object.id,config),passId});
+    return res.status(200).json({state,saveUrl:makeSaveUrl(object.id,config),passId,guestToken:guestToken(passId,config)});
   }catch(error){
     const safe = /^(Wallet|Chybí nastavení Wallet|Chybí databáze Wallet|Neplatný|Google)/.test(error.message || '') ? error.message : 'Kartu se nepodařilo aktualizovat. Původní karta může zůstat beze změny; zkuste to znovu.';
     return res.status(503).json({error:safe});

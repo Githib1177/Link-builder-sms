@@ -2,7 +2,7 @@
   const container=document.createElement('section');
   container.className='card';container.id='walletPanel';
   container.innerHTML=`<h2>Karta pobytu v Google Wallet · testování</h2>
-    <p>Alfréd kód a odkaz na Previo budou na kartě ihned. Stav potvrzuje recepce ručně; propojení s Previo API zatím není aktivní.</p>
+    <p>Po vytvoření karty se možnost uložení do telefonu připojí k původnímu odkazu s pokyny pro hosta. Alfréd kód bude na kartě ihned. Stav potvrzuje recepce ručně.</p>
     <div class="grid two"><div><label for="walletRelease">Přístup ke schránce nejdříve</label><input id="walletRelease" type="datetime-local"></div><div><label for="walletExpires">Konec platnosti karty</label><input id="walletExpires" type="datetime-local"></div></div>
     <label class="state-switch"><input id="walletReady" type="checkbox"><span>Pro tohoto hosta je ve schránce vložená karta a správný kód je ověřený.</span></label>
     <label class="state-switch"><input id="walletConfirm" type="checkbox"><span>Potvrzuji Alfréd kód, stav check-inu a platby nahoře a platnost pobytu pro tuto kartu.</span></label>
@@ -11,8 +11,14 @@
   document.querySelector('#bookingState').closest('.card').after(container);
   const q=id=>document.getElementById(id);
   let saveUrl='', revision=0;
-  const reset=()=>{revision++;saveUrl='';q('walletCopy').hidden=true;q('walletOpen').hidden=true;q('walletOpen').removeAttribute('href');q('walletConfirm').checked=false;q('walletStatus').textContent='';};
-  for(const id of ['alf','box','done','unpaid','walletReady','walletRelease','walletExpires'])q(id).addEventListener('input',()=>{reset();if(id==='alf'||id==='box')q('walletReady').checked=false;});
+  let guestCard=null;
+  const fingerprint=()=>JSON.stringify(['alf','box','guest','done','unpaid','walletReady','walletRelease','walletExpires','noSendBoxInLink'].map(id=>q(id)?.type==='checkbox'?q(id).checked:q(id)?.value));
+  window.falconiWalletLink=url=>{
+    if(!guestCard||guestCard.fingerprint!==fingerprint()||(guestCard.state==='ready'&&q('noSendBoxInLink')?.checked))return url;
+    try{const parsed=new URL(url);if(parsed.protocol!=='https:'||parsed.hostname!=='www.pensionfalconi.cz'||!/^\/(cs|en|de)\/(checkin|codes)\/$/.test(parsed.pathname))return url;parsed.hash=new URLSearchParams({wallet:guestCard.token}).toString();return parsed.href;}catch{return url;}
+  };
+  const reset=()=>{revision++;guestCard=null;saveUrl='';q('walletCopy').hidden=true;q('walletOpen').hidden=true;q('walletOpen').removeAttribute('href');q('walletConfirm').checked=false;q('walletStatus').textContent='';window.gen?.();};
+  for(const id of ['alf','box','guest','done','unpaid','walletReady','walletRelease','walletExpires','noSendBoxInLink'])q(id)?.addEventListener('input',()=>{reset();if(id==='alf'||id==='box'||id==='guest')q('walletReady').checked=false;});
   q('clear').addEventListener('click',()=>{reset();q('walletReady').checked=false;q('walletRelease').value='';q('walletExpires').value='';});
   document.addEventListener('falconi:stay-loaded',()=>{reset();q('walletReady').checked=false;q('walletRelease').value='';q('walletExpires').value='';});
   q('walletSync').addEventListener('click',async()=>{
@@ -20,14 +26,18 @@
     const release=new Date(q('walletRelease').value),expires=new Date(q('walletExpires').value);
     if(!Number.isFinite(release.getTime())||!Number.isFinite(expires.getTime())){q('walletStatus').textContent='Vyplňte oba časy platnosti.';return;}
     const submittedRevision=revision;
+    const submittedFingerprint=fingerprint();
     const body={alfred:q('alf').value,boxCode:q('box').value.trim(),checkinComplete:q('done').checked,paymentComplete:!q('unpaid').checked,lockerReady:q('walletReady').checked,operatorConfirmed:true,releaseAt:release.toISOString(),expiresAt:expires.toISOString()};
+    guestCard=null;window.gen?.();
     q('walletSync').disabled=true;q('walletCopy').hidden=true;q('walletOpen').hidden=true;saveUrl='';q('walletStatus').textContent='Aktualizuji kartu…';
     try {
       const response=await fetch('/api/wallet',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const result=await response.json();if(!response.ok)throw new Error(result.error||'Aktualizace se nezdařila.');
       if(!result.saveUrl?.startsWith('https://pay.google.com/gp/v/save/'))throw new Error('Neplatný odkaz na kartu.');
       // A changed form must never expose the previous guest's save link.
-      if(revision!==submittedRevision||q('alf').value!==body.alfred)throw new Error('Údaje hosta se změnily. Karta byla zpracována pro původní Alfréd kód; načtěte správný pobyt.');
+      if(revision!==submittedRevision||fingerprint()!==submittedFingerprint)throw new Error('Údaje hosta se změnily. Karta byla zpracována pro původní Alfréd kód; načtěte správný pobyt.');
+      if(!/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(result.guestToken||''))throw new Error('Chybí bezpečný odkaz pro hosta.');
+      guestCard={token:result.guestToken,fingerprint:submittedFingerprint,state:result.state};window.gen?.();
       saveUrl=result.saveUrl;q('walletOpen').href=saveUrl;q('walletOpen').hidden=false;q('walletCopy').hidden=false;
       q('walletStatus').textContent=result.state==='ready'?'Google potvrdil aktualizaci: Alfréd i kód schránky. Synchronizace telefonu může chvíli trvat.':'Google potvrdil aktualizaci: Alfréd kód a odkaz. Kód schránky není zveřejněný.';
       q('walletConfirm').checked=false;
