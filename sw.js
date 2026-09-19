@@ -1,5 +1,5 @@
-const CACHE = 'falconi-messenger-v1';
-const SHELL = ['/', '/index.html', '/manifest.json', '/falconi-messenger-32.png', '/falconi-messenger-180.png'];
+const CACHE = 'falconi-messenger-v2';
+const SHELL = ['/monitor.js', '/monitor.css', '/', '/index.html', '/manifest.json', '/falconi-messenger-32.png', '/falconi-messenger-180.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));

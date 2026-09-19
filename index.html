@@ -47,6 +47,7 @@
     @media(max-width:650px){.wrap{padding:12px}.card{padding:14px;margin:12px 0}.history-tools{grid-template-columns:1fr}.history-table thead{display:none}.history-table,.history-table tbody,.history-table tr,.history-table td{display:block;width:100%;box-sizing:border-box}.history-table tr{padding:10px;margin:9px 0;border:1px solid #dbe5f0;border-radius:11px;background:#fff}.history-table td{padding:3px 0!important;border:0!important;white-space:normal!important;max-width:none!important}.history-table td:before{content:attr(data-label);display:inline-block;min-width:78px;color:#64748b;font-weight:700}.history-action{width:100%;margin-top:7px}}
     .send-confirm{width:min(560px,calc(100% - 28px));max-height:calc(100vh - 28px);padding:0;border:0;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.34);color:var(--ink)}.send-confirm::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(2px)}.send-confirm-head{padding:20px 22px 14px;border-bottom:1px solid #e5e7eb}.send-confirm-head h3{margin:0;color:var(--brand);font-size:1.25rem}.send-confirm-head p{margin:6px 0 0}.send-confirm-body{padding:18px 22px;overflow:auto}.confirm-facts{display:grid;gap:9px}.confirm-fact{display:flex;justify-content:space-between;gap:18px;padding:10px 12px;border-radius:10px;background:#f1f5f9}.confirm-fact strong{text-align:right}.confirm-fact.good{background:#ecfdf5;color:#166534}.confirm-fact.warn{background:#fff7ed;color:#9a3412}.confirm-message{margin-top:14px;padding:12px;border:1px solid #dbe5f0;border-radius:10px;background:#f8fbff;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.88rem;max-height:170px;overflow:auto}.send-confirm-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 20px;border-top:1px solid #e5e7eb}.send-confirm-actions button{min-width:130px}@media(max-width:520px){.confirm-fact{display:block}.confirm-fact strong{display:block;text-align:left;margin-top:3px}.send-confirm-actions{display:grid;grid-template-columns:1fr 1fr}.send-confirm-actions button{min-width:0}}
   </style>
+  <link rel="stylesheet" href="/monitor.css">
 </head>
 <body>
   <div id="loginGate">
@@ -81,6 +82,16 @@
     <h1>Falconi Messenger <span class="pill">CZ / EN / DE</span></h1>
 
     <!-- HOST A ZÁKLADNÍ NASTAVENÍ -->
+    <section class="card" id="smsMonitor" aria-label="SMSbrána a oznámení">
+      <div class="sms-monitor-head"><div><div id="smsCredit" class="sms-credit" role="status">Kredit: načítám…</div><div id="smsCreditTime" class="small muted"></div></div><div class="row"><button type="button" class="btn-ghost" id="smsBadge">Oznámení</button><button type="button" class="btn-ghost" id="smsRefresh">Obnovit oznámení</button></div></div>
+      <div id="smsMonitorError" class="sms-monitor-error" role="status"></div>
+      <details id="smsDetails" class="sms-details"><summary>Příchozí SMS a stav doručení</summary>
+        <p class="small muted">Aktualizace každou minutu při otevřené aplikaci. Doručení SMS nepotvrzuje provedení příkazu ani vyzvednutí klíčů.</p>
+        <div class="row"><button type="button" class="btn-ghost" id="smsMarkRead">Označit jako přečtené</button><span class="small muted">Přečtení se ukládá v tomto prohlížeči.</span></div>
+        <div class="sms-columns"><div><h3>Příchozí zprávy · posledních 100</h3><div id="smsIncoming" class="sms-list"></div></div><div><h3>Doručenky · posledních 40 SMS</h3><div id="smsOutgoing" class="sms-list"></div></div></div>
+        <p id="smsSyncTime" class="small muted"></p>
+      </details>
+    </section>
     <div class="card">
       <label for="guest">Jméno hosta (volitelné)</label>
       <input id="guest" placeholder="Např. Jan Novák" />
@@ -332,6 +343,7 @@
     <p class="muted">Ulož jako <b>link-builder.html</b>. Nastavení se uchová v tomto prohlížeči (localStorage).</p>
   </div>
 
+  <script src="/monitor.js"></script>
   <script>
     async function initializeLogin(){
       const gate = document.querySelector('#loginGate');
@@ -341,6 +353,7 @@
         if(data.ok){
           gate.classList.add('hidden');
           loadHistory();
+          startSmsMonitor();
         }
       }catch(e){}
     }
@@ -360,6 +373,7 @@
         document.querySelector('#appPassword').value = '';
         status.textContent = '';
         loadHistory();
+        startSmsMonitor();
       }catch(error){ status.textContent = error.message; }
     });
     initializeLogin();
@@ -642,6 +656,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Komu</th>',
         '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Text</th>',
         '<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">Jazyk</th>',
+        '<th>Stav SMS</th>',
         '<th></th>',
         '</tr></thead><tbody>'
       ];
@@ -656,6 +671,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
           `<td data-label="Komu" style="padding:6px;border-bottom:1px solid #f1f5f9">${esc((r.to||[]).join(', '))}</td>`,
           `<td data-label="Text" style="padding:6px;border-bottom:1px solid #f1f5f9;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.text||'')}</td>`,
           `<td data-label="Jazyk" style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(r.lang||'')}</td>`,
+          `<td data-label="Stav SMS" class="sms-delivery">${esc(window.smsDeliveryText?.(r.id) || (r.deliveries?.length ? r.deliveries.map(a=>a.number+': '+a.statusLabel).join(' · ') : 'Doručenka není k dispozici'))}</td>`,
           `<td>${canLoad ? `<button type="button" class="btn-ghost history-action" data-history-codes="${index}">Načíst pro kódy</button>` : ''}</td>`,
           '</tr>'
         );
@@ -739,8 +755,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       return data;
     }
 
-    async function saveLockerCloudEvent(lockerNo, boxCode, cmd, guest, roomNo, ts){
-      const id    = 'locker_' + Date.now() + '_' + lockerNo;
+    async function saveLockerCloudEvent(lockerNo, boxCode, cmd, guest, roomNo, ts, id){
       const to    = [BOX_DEST];
       const lang  = 'locker';
       const text  = `Kódování schránky #${lockerNo} → ${boxCode}${roomNo ? ` | pokoj ${roomNo}` : ''} | ${cmd}`;
@@ -857,7 +872,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         const response = await fetch('/api/send-sms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'open-locker', locker })
+          body: JSON.stringify({ action: 'open-locker', locker, historyId: crypto.randomUUID() })
         });
         const result = await response.json();
         if(!response.ok || !result.ok) throw new Error(result.error || 'Brána nepotvrdila přijetí příkazu.');
@@ -869,7 +884,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       }finally{
         // Manufacturer recommends a 3–5 second interval between commands.
         await new Promise(resolve => setTimeout(resolve, 5000));
-        setSendingState(false);
+        setSendingState(false); window.refreshSmsMonitor?.();
       }
     }
 
@@ -891,17 +906,18 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       const guest = (Q('#guest')?.value || '').trim();
       const roomNo = (Q('#roomNo')?.value || '').trim();
       try{
-        if(boxStatus) boxStatus.textContent = 'Kóduji schránku…';
+        const id = crypto.randomUUID();
+        if(boxStatus) boxStatus.textContent = 'Odesílám příkaz schránce…';
         const resp = await fetch('/api/send-sms', {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ to: [BOX_DEST], text: cmd })
+          body: JSON.stringify({ to: [BOX_DEST], text: cmd, historyId:id, guest, lockerNo })
         });
         const data = await resp.json().catch(()=>({}));
         if(!resp.ok || !data.ok){
           throw new Error(data.error || data.detail || 'Chyba při odesílání příkazu');
         }
-        if(boxStatus) boxStatus.textContent = '✓ Schránka nakódována.';
+        if(boxStatus) boxStatus.textContent = '✓ Příkaz k nastavení kódu odeslán.';
         retryLockerPending = false;
         Q('#retryLocker')?.classList.add('hidden');
 
@@ -911,7 +927,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         saveLockerState(st);
         renderLockerTable();
         try{
-          await saveLockerCloudEvent(lockerNo, boxCode, cmd, guest, roomNo, ts);
+          await saveLockerCloudEvent(lockerNo, boxCode, cmd, guest, roomNo, ts, id);
           loadHistory();
         }catch(_e){}
 
@@ -1019,7 +1035,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         boxCode,
         sendType: 'Odeslat zprávu s pokyny'
       });
-      if(!confirmed){ statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.'; setSendingState(false); return; }
+      if(!confirmed){ statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.'; setSendingState(false); window.refreshSmsMonitor?.(); return; }
 
       const unicode = isUnicodeSms(text);
       const singleLimit = unicode ? 70 : 160;
@@ -1031,10 +1047,11 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       }
 
       try{
+        const id = crypto.randomUUID();
         const resp = await fetch('/api/send-sms', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ to: numbers, text })
+          body: JSON.stringify({ to: numbers, text, historyId:id, guest:(Q('#guest')?.value || '').trim() })
         });
         const data = await resp.json().catch(()=>({}));
         if(!resp.ok){
@@ -1046,7 +1063,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         statusEl.textContent = failed.length ? '⚠ SMS byla odeslána jen některým příjemcům.' : '✓ SMS odeslána všem příjemcům.';
 
         // cloud historie
-        const id = 'sms_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
         let link = '';
@@ -1065,7 +1081,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         // Schránku programujeme pouze tehdy, když zpráva došla všem zamýšleným příjemcům.
         if (Q('#doBoxCode')?.checked && failed.length === 0) {
           const lockerResult = await sendLockerCommand();
-          summary += lockerResult.ok ? '\nSchránka: úspěšně nakódována.' : `\nSchránka: kódování selhalo – ${lockerResult.error}.`;
+          summary += lockerResult.ok ? '\nSchránka: příkaz k nastavení kódu odeslán.' : `\nSchránka: kódování selhalo – ${lockerResult.error}.`;
         }else if(Q('#doBoxCode')?.checked){
           summary += '\nSchránka: nebyla kódována, protože část zpráv hostům selhala.';
         }
@@ -1075,7 +1091,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         statusEl.textContent = '✗ Nepodařilo se odeslat: ' + (e.message || e);
         showSendResult(`Hosté: odeslání selhalo.\nSchránka: nebyla kódována.\n${e.message || e}`, 'bad');
       }finally{
-        setSendingState(false);
+        setSendingState(false); window.refreshSmsMonitor?.();
       }
     }
 
@@ -1141,16 +1157,17 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       });
       if(!confirmed){
         if(statusEl) statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.';
-        setSendingState(false);
+        setSendingState(false); window.refreshSmsMonitor?.();
         return;
       }
 
       try{
+        const id = crypto.randomUUID();
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
         const resp = await fetch('/api/send-sms', {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ to: numbers, text })
+          body: JSON.stringify({ to: numbers, text, historyId:id, guest:(Q('#guest')?.value || '').trim() })
         });
         const data = await resp.json().catch(()=>({}));
         if(!resp.ok){ throw new Error(data.error || data.detail || 'Chyba při odesílání'); }
@@ -1159,7 +1176,6 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         if(successful.length === 0) throw new Error(data.error || 'Odkaz se nepodařilo odeslat.');
         if(statusEl) statusEl.textContent = failed.length ? '⚠ Odkaz byl odeslán jen některým příjemcům.' : '✓ Odkaz odeslán.';
 
-        const id = 'sms_link_' + Date.now();
         const ts = Date.now();
         const guest = (Q('#guest')?.value || '').trim();
         await saveHistory({ id, ts, guest, lang: `${lang}-codes`, to: successful, text, link, actionType:'codes-link', roomNo:(Q('#roomNo')?.value || '').trim(), resultStatus:failed.length ? 'partial' : 'success' }).catch(()=>{});
@@ -1175,7 +1191,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         if(statusEl) statusEl.textContent = '✗ ' + (e.message || e);
         showSendResult(`Odkaz na kódy se nepodařilo odeslat.\n${e.message || e}`, 'bad');
       }finally{
-        setSendingState(false);
+        setSendingState(false); window.refreshSmsMonitor?.();
       }
     }
 
@@ -1214,7 +1230,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         if(sendInProgress) return;
         setSendingState(true);
         sendLockerCommand(true).then(result=>{
-          showSendResult(result.ok ? 'Schránka byla při opakování úspěšně nakódována.' : `Opakované kódování selhalo.\n${result.error || ''}`, result.ok ? 'good' : 'bad');
+          showSendResult(result.ok ? 'Příkaz k nastavení kódu byl znovu odeslán.' : `Opakované kódování selhalo.\n${result.error || ''}`, result.ok ? 'good' : 'bad');
         }).finally(()=>setSendingState(false));
       }
 

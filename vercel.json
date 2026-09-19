@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/sms-monitor.js": { "maxDuration": 60 },
+    "api/send-sms.js": { "maxDuration": 60 }
+  }
+}

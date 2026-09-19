@@ -1,0 +1,86 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { PGlite } from '@electric-sql/pglite';
+import { ensureMonitor, parseInbox, providerTimestamp, parseResponse, syncMonitor, applyReceipts, publicAttempt, gatewayRead } from '../lib/sms-monitor.js';
+import { trackedSend, sendQuery, asciiMessage } from '../lib/tracked-send.js';
+import monitorHandler from '../api/sms-monitor.js';
+import sendHandler from '../api/send-sms.js';
+const db=new PGlite();
+const sql=async(strings,...values)=>(await db.query(strings.reduce((s,p,i)=>s+(i?'$'+i:'')+p,''),values)).rows;
+const inbox=`<result><inbox><delivery_sms><item><income_id>1</income_id><number>+420602783619</number><time>2026-09-19 10:01:00</time><message>pension falconi Z klavesnice otevren box c: 04*330043*</message></item><item><income_id>2</income_id><number>+420777111222</number><time>20260919T100200</time><message>Z klavesnice otevren box c: 01*123456* &amp; text</message></item></delivery_sms><delivery_report><item><id_sms>123</id_sms><number>+420777111222</number><status>1</status><time>2026-09-19 10:03:00</time></item></delivery_report></inbox></result>`;
+
+test('incoming parser: known device only, safe XML, aliases and Prague time',()=>{
+  const parsed=parseInbox(inbox);
+  assert.equal(parsed.messages[0].kind,'locker-opened');assert.equal(parsed.messages[0].locker,'04');
+  assert.equal(parsed.messages[1].kind,'guest-message');assert.match(parsed.messages[1].message,/& text/);
+  assert.equal(parsed.receipts[0].smsId,'123');
+  for(const tag of ['sms_id','idsms'])assert.equal(parseInbox(inbox.replaceAll('id_sms',tag)).receipts[0].smsId,'123');
+  assert.equal(providerTimestamp('20260919T100200'),Date.parse('2026-09-19T08:02:00Z'));
+  assert.equal(providerTimestamp('2026-01-19 10:02:00'),Date.parse('2026-01-19T09:02:00Z'));
+  assert.equal(providerTimestamp('broken'),null);
+  assert.deepEqual(parseInbox('<result><inbox/></result>'),{receipts:[],messages:[]});
+  assert.throws(()=>parseResponse('<!DOCTYPE a [<!ENTITY x "xx">]><result>&x;</result>'));
+  assert.throws(()=>parseResponse('<result>'));
+});
+
+test('sender and command bytes remain unchanged; only receipts and dedupe added',()=>{
+  for(const number of ['420602783619','420777111222']){
+    const message=asciiMessage('**pin0000*01*nb*');
+    const q=sendQuery({login:'fixture',password:'fixture',number,message,id:'x'.repeat(64)});
+    assert.equal(q.get('message'),'**pin0000*01*nb*');
+    assert.equal(q.has('sender_id'),false);assert.equal(q.has('sender_phone'),false);
+    assert.equal(q.get('delivery_report'),'1');assert.equal(q.get('user_id').length,50);
+    assert.deepEqual([...q.keys()].sort(),['action','delivery_report','login','message','number','password','user_id']);
+  }
+  assert.equal(asciiMessage('pin0000*04*apc*330043*'),'pin0000*04*apc*330043*');
+});
+
+test('database lifecycle: dedupe, uncertain send, polling, monotonic receipts',async()=>{
+  await ensureMonitor(sql);
+  const input={historyId:'test-1',number:'420777111222',message:'Fixture only',login:'fixture',password:'fixture'};
+  let sends=0;
+  const transport=async()=>{sends++;return new Response('<result><err>0</err><sms_id>123</sms_id><price>1.1</price><sms_count>1</sms_count><credit>199.5</credit></result>');};
+  const results=await Promise.all([trackedSend(sql,input,transport),trackedSend(sql,input,transport)]);
+  assert.equal(sends,1);assert.equal(results.filter(r=>r.err===0).length>=1,true);
+  assert.equal((await trackedSend(sql,input,transport)).sms_id,'123');assert.equal(sends,1);
+  assert.match((await trackedSend(sql,{...input,message:'different'},transport)).errMessage,/jiné zprávě/);
+  let attempts=0;
+  const broken=async()=>{attempts++;throw new Error('secret-containing network error');};
+  const uncertain=await trackedSend(sql,{...input,historyId:'uncertain'},broken);
+  assert.equal(uncertain.err,null);assert.doesNotMatch(uncertain.errMessage,/secret/);
+  await trackedSend(sql,{...input,historyId:'uncertain'},broken);assert.equal(attempts,1);
+  const original=global.fetch;
+  process.env.SMS_LOGIN='fixture';process.env.SMS_PASSWORD='fixture';
+  const actions=[];
+  global.fetch=async url=>{const q=new URL(url).searchParams;actions.push(q.get('action'));assert.equal(q.has('delete'),false);assert.equal(q.has('sender_id'),false);return new Response(q.get('action')==='credit_info'?'<result><credit>199.5</credit></result>':inbox);};
+  try{
+    await syncMonitor(sql);await syncMonitor(sql);
+    assert.deepEqual(actions.sort(),['credit_info','inbox']);
+    assert.equal((await sql`SELECT * FROM sms_incoming_events`).length,2);
+    let [sent]=await sql`SELECT * FROM sms_delivery_attempts WHERE history_id='test-1'`;
+    assert.equal(publicAttempt(sent).statusLabel,'Doručeno');
+    await sql`UPDATE sms_monitor_state SET checked_at=0 WHERE id='lease'`;
+    await syncMonitor(sql);
+    assert.equal((await sql`SELECT * FROM sms_incoming_events`).length,2);
+    await sql`INSERT INTO sms_delivery_receipts VALUES ('later-held','123','420777111222',2,${Date.now()+10000},${Date.now()})`;
+    await applyReceipts(sql);
+    [sent]=await sql`SELECT * FROM sms_delivery_attempts WHERE history_id='test-1'`;
+    assert.equal(sent.provider_status,1,'terminal delivered cannot regress to held');
+    await assert.rejects(gatewayRead('send_sms'));
+    global.fetch=async()=>{throw new Error('offline');};
+    await sql`UPDATE sms_monitor_state SET checked_at=0 WHERE id='lease'`;
+    await syncMonitor(sql);
+    const [state]=await sql`SELECT value FROM sms_monitor_state WHERE id='sync'`;
+    assert.equal(state.value.errors.length,2);
+    const [credit]=await sql`SELECT value FROM sms_monitor_state WHERE id='credit'`;
+    assert.equal(credit.value.credit,199.5);
+  }finally{global.fetch=original;await db.close();}
+});
+
+test('unauthenticated APIs never call the gateway',async()=>{
+  for(const handler of [monitorHandler,sendHandler]){
+    let status;
+    const response={setHeader(){},status(n){status=n;return this;},json(){return this;}};
+    await handler({headers:{},method:'GET'},response);assert.equal(status,401);
+  }
+});

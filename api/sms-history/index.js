@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { isAuthorized } from '../_auth.js';
+import { ensureMonitor, publicAttempt } from '../../lib/sms-monitor.js';
 
 const toCsv = arr => Array.isArray(arr) ? arr.join(',') : '';
 const fromCsv = value => (value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -58,6 +59,13 @@ export default async function handler(req, res) {
       ` : [];
       const rows = [...new Map([...recentRows, ...lockerRows].map(row => [row.id, row])).values()]
         .sort((a, b) => Number(b.ts) - Number(a.ts));
+      const deliveries = new Map();
+      // Monitoring must never prevent loading the existing reservation history.
+      try {
+        await ensureMonitor(sql);
+        const attempts = await sql`SELECT * FROM sms_delivery_attempts WHERE history_id = ANY(${rows.map(r=>r.id)}::text[])`;
+        for (const a of attempts) deliveries.set(a.history_id,[...(deliveries.get(a.history_id)||[]),publicAttempt(a)]);
+      } catch {}
       return res.status(200).json(rows.map(row => ({
         id: row.id,
         ts: Number(row.ts),
@@ -70,7 +78,8 @@ export default async function handler(req, res) {
         lockerNo: row.locker_no || '',
         roomNo: row.room_no || '',
         boxCode: row.box_code || '',
-        resultStatus: row.result_status || ''
+        resultStatus: row.result_status || '',
+        deliveries: deliveries.get(row.id) || []
       })));
     }
 
