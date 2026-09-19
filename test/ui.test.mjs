@@ -19,11 +19,16 @@ test('UI: low credit, new device notification, read state, safe text, offline an
    await wait();
    assert.match($('#smsCredit').textContent,/199,50 Kč · Doplňte kredit/);
    assert.equal($('#loginGate').classList.contains('hidden'),true);
+   response={...response,inboxInfo:{messages:1,deviceMessages:0,receipts:1,bytes:350,sections:['delivery_sms','delivery_report']},events:[{id:'guest',receivedAt:Date.now(),ts:Date.now(),kind:'guest-message',number:'420777111222',message:'Ok'}]};
+   await w.refreshSmsMonitor();
+   assert.match($('#smsMonitorError').textContent,/Příjem odpovědí schránek není ověřen/);
+   assert.match($('#smsApiDiagnostic').textContent,/1 příchozích SMS, z toho 0 od schránek/);
    const dangerous='<img src=x onerror="throw 1">';
    response={...response,events:[{id:'new',receivedAt:Date.now()+1000,ts:Date.now(),kind:'locker-opened',lockerNo:'04',number:'420602783619',message:dangerous}]};
    await w.refreshSmsMonitor();
    assert.match($('#smsBadge').textContent,/1 nových/);
    assert.match($('#smsIncoming').textContent,/Schránka 04: otevření klávesnicí/);
+   assert.doesNotMatch($('#smsMonitorError').textContent,/Příjem odpovědí schránek není ověřen/);
    assert.equal($('#smsIncoming img'),null);assert.match($('#smsIncoming').textContent,/<img/);
    $('#smsMarkRead').click();assert.equal($('#smsBadge').textContent,'Oznámení');
    await w.refreshSmsMonitor();assert.equal($('#smsBadge').textContent,'Oznámení');

@@ -25,9 +25,14 @@
     $('#smsBadge').textContent=unread?`${unread} nových oznámení`:'Oznámení';
     $('#smsBadge').classList.toggle('sms-warning',unread>0);
     const errors=[...(data.errors||[])];
+    if(!events.some(e=>['locker-opened','locker-code-added','device-message'].includes(e.kind)))errors.push('Příjem odpovědí schránek není ověřen: aplikace zatím nemá žádnou zprávu od zařízení. Načtení kreditu ani zpráva od hosta nepotvrzují funkční příjem ze schránek.');
     if(!data.inboxCheckedAt||Date.now()-data.inboxCheckedAt>180000)errors.push('Příchozí zprávy a doručenky nejsou aktuálně ověřené.');
     $('#smsMonitorError').textContent=errors.join(' ');
     $('#smsSyncTime').textContent=`Poslední kontrola příchozích zpráv: ${time(data.inboxCheckedAt)}.`;
+    let diagnostic=$('#smsApiDiagnostic');
+    if(!diagnostic){diagnostic=el('p',null,'small muted');diagnostic.id='smsApiDiagnostic';$('#smsSyncTime').after(diagnostic);}
+    const info=data.inboxInfo;
+    diagnostic.textContent=info?`Poslední odpověď SMS Connect: ${info.messages??'—'} příchozích SMS, z toho ${info.deviceMessages??'—'} od schránek; ${info.receipts??'—'} doručenek. Velikost ${info.bytes??'—'} znaků. Sekce: ${(info.sections||[]).join(', ')||'prázdná odpověď'}.`:'Diagnostika SMS Connect zatím není dostupná.';
     $('#smsIncoming').replaceChildren();
     if(!events.length)$('#smsIncoming').append(el('p','SMSbrána zatím přes API nepředala žádné příchozí SMS. Zprávy viditelné v jejím portálu nemusí být dostupné také přes SMS Connect. Příjem oznámení ze schránek zatím není ověřen.','sms-monitor-error'));
     events.forEach(e=>{
