@@ -35,6 +35,22 @@ test('sender and command bytes remain unchanged; only receipts and dedupe added'
   assert.equal(asciiMessage('pin0000*04*apc*330043*'),'pin0000*04*apc*330043*');
 });
 
+test('programming acknowledgement accepts the supplied device format without treating its suffix as a date',()=>{
+  const sample='pension falconi\npridan kod pro box c: 01: 034784z cisla: 2026';
+  const read=(message,number='+420602783619')=>parseInbox(`<result><inbox><delivery_sms><item><number>${number}</number><time>20260919T100200</time><message>${message}</message></item></delivery_sms></inbox></result>`).messages[0];
+  for(const message of [sample,sample.replace('\n','\\'), 'Pension Falconi\r\nPřidán kód pro box č: 1: 034784 z čísla: 2026']) {
+    const event=read(message);
+    assert.equal(event.kind,'locker-code-added');assert.equal(event.locker,'01');
+    assert.equal(event.ts,Date.parse('2026-09-19T08:02:00Z'));
+    assert.equal(event.message,message.replaceAll('\r\n','\n'));
+  }
+  assert.equal(read(sample,'+420777111222').kind,'guest-message');
+  for(const invalid of [sample.replace('01:','09:'),sample.replace('034784','0347849'),sample.replace('034784','34784'),'nepodarilo se: '+sample,sample+' chyba']) {
+    assert.equal(read(invalid).kind,'device-message');
+    assert.equal(read(invalid).locker,null);
+  }
+});
+
 test('database lifecycle: dedupe, uncertain send, polling, monotonic receipts',async()=>{
   await ensureMonitor(sql);
   const input={historyId:'test-1',number:'420777111222',message:'Fixture only',login:'fixture',password:'fixture'};

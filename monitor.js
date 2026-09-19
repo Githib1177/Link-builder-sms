@@ -32,7 +32,7 @@
     if(!events.length)$('#smsIncoming').append(el('p','SMSbrána zatím přes API nepředala žádné příchozí SMS. Zprávy viditelné v jejím portálu nemusí být dostupné také přes SMS Connect. Příjem oznámení ze schránek zatím není ověřen.','sms-monitor-error'));
     events.forEach(e=>{
       const item=el('article',null,'sms-event'+(e.receivedAt>seen?' sms-unread':''));
-      item.append(el('strong',e.kind==='locker-opened'?`Schránka ${e.lockerNo}: otevření klávesnicí`:e.kind==='device-message'?'Zpráva od schránek':`Příchozí SMS · +${e.number}`));
+      item.append(el('strong',e.kind==='locker-code-added'?`Schránka ${e.lockerNo}: zařízení potvrdilo přidání kódu`:e.kind==='locker-opened'?`Schránka ${e.lockerNo}: otevření klávesnicí`:e.kind==='device-message'?'Zpráva od schránek':`Příchozí SMS · +${e.number}`));
       item.append(el('div',e.ts?time(e.ts):e.time||'Čas neuveden','small muted'));
       const detail=el('details');detail.append(el('summary','Zobrazit SMS'),el('p',e.message,'sms-message'));item.append(detail);
       $('#smsIncoming').append(item);

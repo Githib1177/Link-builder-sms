@@ -1,5 +1,5 @@
 import { isAuthorized } from './_auth.js';
-import { database, ensureMonitor, syncMonitor, publicAttempt } from '../lib/sms-monitor.js';
+import { database, ensureMonitor, syncMonitor, publicAttempt, classifyDeviceMessage } from '../lib/sms-monitor.js';
 
 export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');
@@ -22,7 +22,7 @@ export default async function handler(req,res) {
       inboxCheckedAt:Number(byId.inbox?.checked_at)||null,
       inboxInfo:byId.inbox?.value||null,
       errors:byId.sync?.value?.errors||[],
-      events:events.map(e=>({id:e.id,number:e.number,message:e.message,time:e.provider_time_text,ts:e.provider_time==null?null:Number(e.provider_time),receivedAt:Number(e.received_at),kind:e.kind,lockerNo:e.locker_no})),
+      events:events.map(e=>{const parsed=classifyDeviceMessage(e.number,e.message);return {id:e.id,number:e.number,message:e.message,time:e.provider_time_text,ts:e.provider_time==null?null:Number(e.provider_time),receivedAt:Number(e.received_at),kind:parsed.kind,lockerNo:parsed.locker};}),
       outgoing:outgoing.map(publicAttempt)
     });
   } catch { return res.status(503).json({error:'Oznámení jsou dočasně nedostupná. Stav doručení ani kredit nelze nyní ověřit.'}); }

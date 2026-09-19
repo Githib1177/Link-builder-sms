@@ -1,4 +1,4 @@
-const CACHE = 'falconi-messenger-v2';
+const CACHE = 'falconi-messenger-v3';
 const SHELL = ['/monitor.js', '/monitor.css', '/', '/index.html', '/manifest.json', '/falconi-messenger-32.png', '/falconi-messenger-180.png'];
 
 self.addEventListener('install', event => {

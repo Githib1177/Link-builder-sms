@@ -27,6 +27,12 @@ test('UI: low credit, new device notification, read state, safe text, offline an
    assert.equal($('#smsIncoming img'),null);assert.match($('#smsIncoming').textContent,/<img/);
    $('#smsMarkRead').click();assert.equal($('#smsBadge').textContent,'Oznámení');
    await w.refreshSmsMonitor();assert.equal($('#smsBadge').textContent,'Oznámení');
+   response={...response,events:[{id:'code-added',receivedAt:Date.now()+2000,ts:Date.now(),kind:'locker-code-added',lockerNo:'01',number:'420602783619',message:'pension falconi\npridan kod pro box c: 01: 034784z cisla: 2026'}]};
+   await w.refreshSmsMonitor();
+   assert.match($('#smsIncoming strong').textContent,/Schránka 01: zařízení potvrdilo přidání kódu/);
+   assert.doesNotMatch($('#smsIncoming strong').textContent,/034784|2026/);
+   assert.match($('#smsIncoming details').textContent,/034784z cisla: 2026/);
+   assert.match($('#smsBadge').textContent,/1 nových/);
    response={...response,creditCheckedAt:Date.now()-240000,inboxCheckedAt:Date.now()-240000};
    await w.refreshSmsMonitor();assert.match($('#smsCredit').textContent,/údaj není aktuální/);
    status=503;response={error:'Dočasně nedostupné'};await w.refreshSmsMonitor();assert.match($('#smsCredit').textContent,/nelze ověřit/);
