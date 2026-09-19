@@ -23,14 +23,15 @@ test('incoming parser: known device only, safe XML, aliases and Prague time',()=
   assert.throws(()=>parseResponse('<result>'));
 });
 
-test('sender and command bytes remain unchanged; only receipts and dedupe added',()=>{
-  for(const number of ['420602783619','420777111222']){
+test('locker uses system sender for every number format; guest sender and command bytes remain unchanged',()=>{
+  for(const number of ['420602783619','+420602783619','602783619','00420602783619','420777111222']){
     const message=asciiMessage('**pin0000*01*nb*');
     const q=sendQuery({login:'fixture',password:'fixture',number,message,id:'x'.repeat(64)});
     assert.equal(q.get('message'),'**pin0000*01*nb*');
-    assert.equal(q.has('sender_id'),false);assert.equal(q.has('sender_phone'),false);
+    const device=number!=='420777111222';
+    assert.equal(q.get('sender_id'),device?'0':null);assert.equal(q.has('sender_phone'),false);
     assert.equal(q.get('delivery_report'),'1');assert.equal(q.get('user_id').length,50);
-    assert.deepEqual([...q.keys()].sort(),['action','delivery_report','login','message','number','password','user_id']);
+    assert.deepEqual([...q.keys()].sort(),['action','delivery_report','login','message','number','password',...(device?['sender_id']:[]),'user_id']);
   }
   assert.equal(asciiMessage('pin0000*04*apc*330043*'),'pin0000*04*apc*330043*');
 });
@@ -58,6 +59,17 @@ test('database lifecycle: dedupe, uncertain send, polling, monotonic receipts',a
   const transport=async()=>{sends++;return new Response('<result><err>0</err><sms_id>123</sms_id><price>1.1</price><sms_count>1</sms_count><credit>199.5</credit></result>');};
   const results=await Promise.all([trackedSend(sql,input,transport),trackedSend(sql,input,transport)]);
   assert.equal(sends,1);assert.equal(results.filter(r=>r.err===0).length>=1,true);
+  let deviceSends=0;
+  const refusedDevice=async url=>{
+    deviceSends++;
+    const q=new URL(url).searchParams;
+    assert.equal(q.get('sender_id'),'0');assert.equal(q.has('sender_phone'),false);
+    return new Response('<result><err>13</err></result>');
+  };
+  const deviceInput={...input,historyId:'device-sender',number:'420602783619',message:'**pin0000*01*ln*',actionType:'guest-sms'};
+  assert.equal((await trackedSend(sql,deviceInput,refusedDevice)).err,13);
+  assert.equal((await trackedSend(sql,deviceInput,refusedDevice)).err,13);
+  assert.equal(deviceSends,1,'a rejected device sender must never fall back or resend');
   assert.equal((await trackedSend(sql,input,transport)).sms_id,'123');assert.equal(sends,1);
   assert.match((await trackedSend(sql,{...input,message:'different'},transport)).errMessage,/jiné zprávě/);
   let attempts=0;
