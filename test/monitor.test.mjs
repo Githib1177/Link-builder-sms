@@ -23,15 +23,16 @@ test('incoming parser: known device only, safe XML, aliases and Prague time',()=
   assert.throws(()=>parseResponse('<result>'));
 });
 
-test('locker uses system sender for every number format; guest sender and command bytes remain unchanged',()=>{
-  for(const number of ['420602783619','+420602783619','602783619','00420602783619','420777111222']){
+test('locker uses system sender; all other recipients use reception and preserve command bytes',()=>{
+  const devices=['420602783619','+420602783619','602783619','00420602783619'];
+  for(const number of [...devices,'420777111222','777111222','+491701234567']){
     const message=asciiMessage('**pin0000*01*nb*');
     const q=sendQuery({login:'fixture',password:'fixture',number,message,id:'x'.repeat(64)});
     assert.equal(q.get('message'),'**pin0000*01*nb*');
-    const device=number!=='420777111222';
-    assert.equal(q.get('sender_id'),device?'0':null);assert.equal(q.has('sender_phone'),false);
+    const device=devices.includes(number);
+    assert.equal(q.get('sender_id'),device?'0':null);assert.equal(q.get('sender_phone'),device?null:'420721516894');
     assert.equal(q.get('delivery_report'),'1');assert.equal(q.get('user_id').length,50);
-    assert.deepEqual([...q.keys()].sort(),['action','delivery_report','login','message','number','password',...(device?['sender_id']:[]),'user_id']);
+    assert.deepEqual([...q.keys()].sort(),['action','delivery_report','login','message','number','password',device?'sender_id':'sender_phone','user_id']);
   }
   assert.equal(asciiMessage('pin0000*04*apc*330043*'),'pin0000*04*apc*330043*');
 });
@@ -70,6 +71,17 @@ test('database lifecycle: dedupe, uncertain send, polling, monotonic receipts',a
   assert.equal((await trackedSend(sql,deviceInput,refusedDevice)).err,13);
   assert.equal((await trackedSend(sql,deviceInput,refusedDevice)).err,13);
   assert.equal(deviceSends,1,'a rejected device sender must never fall back or resend');
+  let guestSends=0;
+  const refusedGuest=async url=>{
+    guestSends++;
+    const q=new URL(url).searchParams;
+    assert.equal(q.get('sender_phone'),'420721516894');assert.equal(q.has('sender_id'),false);
+    return new Response('<result><err>13</err></result>');
+  };
+  const guestInput={...input,historyId:'reception-sender',actionType:'locker'};
+  assert.equal((await trackedSend(sql,guestInput,refusedGuest)).err,13);
+  assert.equal((await trackedSend(sql,guestInput,refusedGuest)).err,13);
+  assert.equal(guestSends,1,'reception rejection must never fall back to InfoSMS or a shortcode');
   assert.equal((await trackedSend(sql,input,transport)).sms_id,'123');assert.equal(sends,1);
   assert.match((await trackedSend(sql,{...input,message:'different'},transport)).errMessage,/jiné zprávě/);
   let attempts=0;
