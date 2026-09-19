@@ -20,6 +20,7 @@ export default async function handler(req,res) {
       credit:byId.credit?.value?.credit ?? null, creditCheckedAt:Number(byId.credit?.checked_at)||null,
       threshold:Number.isFinite(threshold)&&threshold>=0?threshold:200,
       inboxCheckedAt:Number(byId.inbox?.checked_at)||null,
+      inboxInfo:byId.inbox?.value||null,
       errors:byId.sync?.value?.errors||[],
       events:events.map(e=>({id:e.id,number:e.number,message:e.message,time:e.provider_time_text,ts:e.provider_time==null?null:Number(e.provider_time),receivedAt:Number(e.received_at),kind:e.kind,lockerNo:e.locker_no})),
       outgoing:outgoing.map(publicAttempt)

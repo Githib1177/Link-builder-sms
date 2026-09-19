@@ -29,7 +29,7 @@
     $('#smsMonitorError').textContent=errors.join(' ');
     $('#smsSyncTime').textContent=`Poslední kontrola příchozích zpráv: ${time(data.inboxCheckedAt)}.`;
     $('#smsIncoming').replaceChildren();
-    if(!events.length)$('#smsIncoming').append(el('p','Zatím nejsou dostupné žádné příchozí SMS.','muted'));
+    if(!events.length)$('#smsIncoming').append(el('p','SMSbrána zatím přes API nepředala žádné příchozí SMS. Zprávy viditelné v jejím portálu nemusí být dostupné také přes SMS Connect. Příjem oznámení ze schránek zatím není ověřen.','sms-monitor-error'));
     events.forEach(e=>{
       const item=el('article',null,'sms-event'+(e.receivedAt>seen?' sms-unread':''));
       item.append(el('strong',e.kind==='locker-opened'?`Schránka ${e.lockerNo}: otevření klávesnicí`:e.kind==='device-message'?'Zpráva od schránek':`Příchozí SMS · +${e.number}`));
