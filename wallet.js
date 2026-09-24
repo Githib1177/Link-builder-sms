@@ -6,7 +6,7 @@
     <div class="grid two"><div><label for="walletRelease">Přístup ke schránce nejdříve</label><input id="walletRelease" type="datetime-local"></div><div><label for="walletExpires">Konec platnosti karty</label><input id="walletExpires" type="datetime-local"></div></div>
     <label class="state-switch"><input id="walletReady" type="checkbox"><span>Pro tohoto hosta je ve schránce vložená karta a správný kód je ověřený.</span></label>
     <label class="state-switch"><input id="walletConfirm" type="checkbox"><span>Potvrzuji Alfréd kód, stav check-inu a platby nahoře a platnost pobytu pro tuto kartu.</span></label>
-    <p class="small">Kód schránky se doplní pouze při dokončeném check-inu, uhrazené platbě, potvrzené přípravě a dosažení času přístupu. Po změně stavu i po dosažení nastaveného času kartu ručně aktualizujte; stejný Alfréd kód aktualizuje stejnou kartu. Aktualizace telefonu vyžaduje internet.</p>
+    <p class="small">Alfréd kód zůstává na kartě vždy. Při odeslání odkazu na kódy se existující karta aktualizuje automaticky podle údajů nahoře; potvrzením odeslání potvrzujete připravenou schránku. Oba časy vyplňte při prvním vytvoření karty. Aktualizace telefonu vyžaduje internet.</p>
     <div class="row"><button id="walletSync" class="btn" type="button">Vytvořit / aktualizovat kartu</button><button id="walletCopy" class="btn-ghost" type="button" hidden>Kopírovat odkaz na kartu</button><a id="walletOpen" class="btn-ghost" target="_blank" rel="noopener noreferrer" hidden>Otevřít kartu</a></div><p id="walletStatus" role="status" aria-live="polite"></p>`;
   document.querySelector('#bookingState').closest('.card').after(container);
   const q=id=>document.getElementById(id);
@@ -21,6 +21,28 @@
   for(const id of ['alf','box','guest','done','unpaid','walletReady','walletRelease','walletExpires','noSendBoxInLink'])q(id)?.addEventListener('input',()=>{reset();if(id==='alf'||id==='box'||id==='guest')q('walletReady').checked=false;});
   q('clear').addEventListener('click',()=>{reset();q('walletReady').checked=false;q('walletRelease').value='';q('walletExpires').value='';});
   document.addEventListener('falconi:stay-loaded',()=>{reset();q('walletReady').checked=false;q('walletRelease').value='';q('walletExpires').value='';});
+  window.falconiWalletBeforeCodes=async()=>{
+    const submittedFingerprint=fingerprint();
+    const body={action:'codes-link',alfred:q('alf').value,boxCode:q('box').value.trim(),checkinComplete:q('done').checked,paymentComplete:!q('unpaid').checked,lockerReady:true,operatorConfirmed:true};
+    reset();
+    const requestRevision=revision;
+    q('walletSync').disabled=true;
+    q('walletStatus').textContent='Aktualizuji kartu před odesláním kódů…';
+    try{
+      const response=await fetch('/api/wallet',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Aktualizace karty se nezdařila.');
+      if(revision!==requestRevision||fingerprint()!==submittedFingerprint)throw new Error('Údaje hosta se změnily. Zkontrolujte pobyt a odešlete znovu.');
+      if(result.skipped===true&&result.reason==='no-card'){q('walletStatus').textContent='Pro tento Alfréd kód ještě nebyla vytvořena karta.';return;}
+      if(result.state!=='ready'||!/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(result.guestToken||''))throw new Error('Google nepotvrdil zpřístupnění kódu na kartě.');
+      guestCard={token:result.guestToken,fingerprint:submittedFingerprint,state:result.state};
+      saveUrl=location.origin+'/api/wallet-save?token='+encodeURIComponent(result.guestToken);
+      q('walletOpen').href=saveUrl;q('walletOpen').hidden=false;q('walletCopy').hidden=false;
+      q('walletStatus').textContent='Google potvrdil aktualizaci: Alfréd i kód schránky. Synchronizace telefonu může chvíli trvat.';
+      window.gen?.();
+    }catch(error){q('walletStatus').textContent=error.message;throw error;}
+    finally{q('walletSync').disabled=false;}
+  };
   q('walletSync').addEventListener('click',async()=>{
     if(!q('walletConfirm').checked){q('walletStatus').textContent='Nejdříve potvrďte správnost údajů pro tuto kartu.';return;}
     const release=new Date(q('walletRelease').value),expires=new Date(q('walletExpires').value);

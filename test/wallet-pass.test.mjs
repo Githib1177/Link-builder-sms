@@ -39,7 +39,7 @@ test('before release time and after checkout no locker code escapes',()=>{
     assert.equal(expired.state,'EXPIRED');
     assert.deepEqual(expired.merchantLocations,[]);
     assert.ok(!JSON.stringify(expired).includes(locker.code));
-    assert.ok(!JSON.stringify(expired).includes('DEMOXX'));
+    assert.ok(expired.textModulesData.some(v=>v.id==='alfred'&&v.body==='DEMOXX'));
   }
 });
 test('Alfred links are constrained to the actual Previo login origin',()=>{

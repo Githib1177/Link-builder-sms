@@ -962,13 +962,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       container.appendChild(row);
     }
 
-    function confirmSending({ numbers, text, guestBoxCode, programsLocker, lockerNo, roomNo, boxCode, sendType }){
+    function confirmSending({ numbers, text, guestBoxCode, programsLocker, lockerNo, roomNo, boxCode, sendType, walletUpdate }){
       const dialog = Q('#sendConfirm');
       const facts = Q('#sendConfirmFacts');
       facts.replaceChildren();
 
       addConfirmationFact(facts, 'Akce', sendType || 'Odeslat SMS');
       addConfirmationFact(facts, 'Příjemce', numbers.join(', '));
+      if(walletUpdate) addConfirmationFact(facts, 'Karta Google Wallet', 'Potvrzením potvrzujete připravenou schránku pro tohoto hosta. Existující karta se aktualizuje před odesláním SMS.');
       const complete = Q('#done')?.checked;
       const due = Q('#unpaid')?.checked;
       addConfirmationFact(
@@ -1135,7 +1136,13 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
 
       if(!numbers.length){ if(statusEl) statusEl.textContent = 'Zadej alespoň jedno číslo.'; return; }
 
-      const link = buildCodesLink(!noSend);
+      const walletUpdate=!noSend&&!!(Q('#alf')?.value || '').trim();
+      if(walletUpdate&&(!Q('#done')?.checked||Q('#unpaid')?.checked)){
+        statusEl.textContent='Před odesláním kódů potvrďte nahoře dokončený check-in a uhrazenou platbu.';return;
+      }
+      const formState=()=>JSON.stringify(['smsTo','smsLang','alf','box','guest','base','done','unpaid','noSendBoxInLink'].map(id=>Q('#'+id)?.type==='checkbox'?Q('#'+id).checked:Q('#'+id)?.value));
+      const submittedForm=formState();
+      let link = buildCodesLink(!noSend);
       if(!link){
         if(noSend){
           // bez kódu link vždy existuje
@@ -1145,7 +1152,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         }
       }
 
-      const text = `${codesPrefix(lang, !noSend)}\n${link}`;
+      let text = `${codesPrefix(lang, !noSend)}\n${link}`;
 
       setSendingState(true);
       const confirmed = await confirmSending({
@@ -1156,7 +1163,8 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
         lockerNo: '',
         roomNo: '',
         boxCode: (Q('#box')?.value || '').trim(),
-        sendType: 'Poslat pouze odkaz na kódy'
+        sendType: 'Poslat pouze odkaz na kódy',
+        walletUpdate
       });
       if(!confirmed){
         if(statusEl) statusEl.textContent = 'Odeslání zrušeno – můžete údaje upravit.';
@@ -1165,6 +1173,14 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       }
 
       try{
+        if(formState()!==submittedForm)throw new Error('Údaje se změnily. Zkontrolujte je a odešlete znovu.');
+        if(walletUpdate){
+          if(typeof window.falconiWalletBeforeCodes!=='function')throw new Error('Část Wallet se nenačetla. Obnovte stránku a zkuste to znovu.');
+          await window.falconiWalletBeforeCodes();
+          if(formState()!==submittedForm)throw new Error('Údaje se změnily. Zkontrolujte je a odešlete znovu.');
+          link=buildCodesLink(!noSend);
+          text=`${codesPrefix(lang, !noSend)}\n${link}`;
+        }
         const id = crypto.randomUUID();
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
         const resp = await fetch('/api/send-sms', {
