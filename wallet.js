@@ -1,12 +1,12 @@
 (() => {
   const container=document.createElement('section');
   container.className='card';container.id='walletPanel';
-  container.innerHTML=`<h2>Karta pobytu v Google Wallet · testování</h2>
+  container.innerHTML=`<h2>Karta pobytu v Google Wallet</h2>
     <p>Po vytvoření karty se možnost uložení do telefonu připojí k původnímu odkazu s pokyny pro hosta. Alfréd kód bude na kartě ihned. Stav potvrzuje recepce ručně.</p>
     <div class="grid two"><div><label for="walletRelease">Přístup ke schránce nejdříve</label><input id="walletRelease" type="datetime-local"></div><div><label for="walletExpires">Konec platnosti karty</label><input id="walletExpires" type="datetime-local"></div></div>
     <label class="state-switch"><input id="walletReady" type="checkbox"><span>Pro tohoto hosta je ve schránce vložená karta a správný kód je ověřený.</span></label>
     <label class="state-switch"><input id="walletConfirm" type="checkbox"><span>Potvrzuji Alfréd kód, stav check-inu a platby nahoře a platnost pobytu pro tuto kartu.</span></label>
-    <p class="small">Kód schránky se doplní pouze při dokončeném check-inu, uhrazené platbě, potvrzené přípravě a dosažení času přístupu. Po změně stavu stiskněte Aktualizovat; stejný Alfréd kód aktualizuje stejnou kartu. Aktualizace telefonu vyžaduje internet.</p>
+    <p class="small">Kód schránky se doplní pouze při dokončeném check-inu, uhrazené platbě, potvrzené přípravě a dosažení času přístupu. Po změně stavu i po dosažení nastaveného času kartu ručně aktualizujte; stejný Alfréd kód aktualizuje stejnou kartu. Aktualizace telefonu vyžaduje internet.</p>
     <div class="row"><button id="walletSync" class="btn" type="button">Vytvořit / aktualizovat kartu</button><button id="walletCopy" class="btn-ghost" type="button" hidden>Kopírovat odkaz na kartu</button><a id="walletOpen" class="btn-ghost" target="_blank" rel="noopener noreferrer" hidden>Otevřít kartu</a></div><p id="walletStatus" role="status" aria-live="polite"></p>`;
   document.querySelector('#bookingState').closest('.card').after(container);
   const q=id=>document.getElementById(id);
@@ -38,7 +38,7 @@
       if(revision!==submittedRevision||fingerprint()!==submittedFingerprint)throw new Error('Údaje hosta se změnily. Karta byla zpracována pro původní Alfréd kód; načtěte správný pobyt.');
       if(!/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(result.guestToken||''))throw new Error('Chybí bezpečný odkaz pro hosta.');
       guestCard={token:result.guestToken,fingerprint:submittedFingerprint,state:result.state};window.gen?.();
-      saveUrl=result.saveUrl;q('walletOpen').href=saveUrl;q('walletOpen').hidden=false;q('walletCopy').hidden=false;
+      saveUrl=location.origin+'/api/wallet-save?token='+encodeURIComponent(result.guestToken);q('walletOpen').href=saveUrl;q('walletOpen').hidden=false;q('walletCopy').hidden=false;
       q('walletStatus').textContent=result.state==='ready'?'Google potvrdil aktualizaci: Alfréd i kód schránky. Synchronizace telefonu může chvíli trvat.':'Google potvrdil aktualizaci: Alfréd kód a odkaz. Kód schránky není zveřejněný.';
       q('walletConfirm').checked=false;
     }catch(e){q('walletStatus').textContent=e.message;}finally{q('walletSync').disabled=false;}
