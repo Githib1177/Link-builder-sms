@@ -388,7 +388,8 @@
         .filter(([,v]) => v && String(v).trim()!=='')
         .map(([k,v]) => k + '=' + enc(String(v)))
         .join('&');
-      return b + p + (q ? ('?'+q) : '');
+      const url = b + p + (q ? ('?'+q) : '');
+      return window.falconiWalletLink ? window.falconiWalletLink(url) : url;
     }
 
     function deriveAlfUrl(alfInput){
@@ -612,6 +613,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       if(record.roomNo) Q('#roomNo').value = record.roomNo;
       Q('#done').checked = parsed.searchParams.has('done');
       Q('#unpaid').checked = parsed.searchParams.has('unpaid');
+      document.dispatchEvent(new Event('falconi:stay-loaded'));
       Q('#isFemale').checked = /\b(Paní|Ms|Frau)\b/i.test(String(record.text || ''));
       if(Q('#doBoxCode')) Q('#doBoxCode').checked = false;
 
@@ -1109,7 +1111,8 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       const alf = deriveAlfUrl((Q('#alf')?.value || '').trim());
       if(alf) params.set('alf', alf);
       const query = params.toString();
-      return `${base}/${seg}/codes/${query ? '?' + query : ''}`;
+      const url = `${base}/${seg}/codes/${query ? '?' + query : ''}`;
+      return window.falconiWalletLink ? window.falconiWalletLink(url) : url;
     }
     function codesPrefix(lang, includeBox){
       if(includeBox){
@@ -1290,6 +1293,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
     updateDeliveryOptions();
   </script>
 
+  <script src="/wallet.js"></script>
   <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
   <script>
     if ('serviceWorker' in navigator) {
