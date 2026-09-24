@@ -15,7 +15,7 @@
   const fingerprint=()=>JSON.stringify(['alf','box','guest','done','unpaid','walletReady','walletRelease','walletExpires','noSendBoxInLink'].map(id=>q(id)?.type==='checkbox'?q(id).checked:q(id)?.value));
   window.falconiWalletLink=url=>{
     if(!guestCard||guestCard.fingerprint!==fingerprint()||(guestCard.state==='ready'&&q('noSendBoxInLink')?.checked))return url;
-    try{const parsed=new URL(url);if(parsed.protocol!=='https:'||parsed.hostname!=='www.pensionfalconi.cz'||!/^\/(cs|en|de)\/(checkin|codes)\/$/.test(parsed.pathname))return url;parsed.hash=new URLSearchParams({wallet:guestCard.token}).toString();return parsed.href;}catch{return url;}
+    try{const parsed=new URL(url);if(parsed.protocol!=='https:'||parsed.hostname!=='www.pensionfalconi.cz'||!/^\/(cs|en|de)\/(checkin|codes)\/$/.test(parsed.pathname))return url;parsed.hash='wallet-'+Array.from(guestCard.token,c=>c.charCodeAt(0).toString(16).padStart(2,'0')).join('');return parsed.href;}catch{return url;}
   };
   const reset=()=>{revision++;guestCard=null;saveUrl='';q('walletCopy').hidden=true;q('walletOpen').hidden=true;q('walletOpen').removeAttribute('href');q('walletConfirm').checked=false;q('walletStatus').textContent='';window.gen?.();};
   for(const id of ['alf','box','guest','done','unpaid','walletReady','walletRelease','walletExpires','noSendBoxInLink'])q(id)?.addEventListener('input',()=>{reset();if(id==='alf'||id==='box'||id==='guest')q('walletReady').checked=false;});

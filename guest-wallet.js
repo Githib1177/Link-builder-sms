@@ -3,7 +3,10 @@
   function render(){
     document.getElementById('falconi-wallet-save')?.remove();
     const root=document.getElementById('falconi-guest');
-    const token=new URLSearchParams(location.hash.slice(1)).get('wallet');
+    const fragment=location.hash.slice(1);
+    const token=/^wallet-[0-9a-f]{160}$/.test(fragment)
+      ?fragment.slice(7).match(/../g).map(pair=>String.fromCharCode(parseInt(pair,16))).join('')
+      :new URLSearchParams(fragment).get('wallet');
     if(!root||!/^\w{8}-\w{4}-4\w{3}-[89ab]\w{3}-\w{12}\.[A-Za-z0-9_-]{43}$/.test(token||''))return;
     const language=root.lang||document.documentElement.lang;
     const lang=language.startsWith('de')?'de':language.startsWith('en')?'en':'cs';

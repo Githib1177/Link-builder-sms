@@ -28,7 +28,10 @@ test('cross-language original pages: 3 languages × 2 page types × 8 booking co
    const original=readFileSync(new URL(`./fixtures/guest/${lang}-${page}.html`,import.meta.url),'utf8');
    const token=guestToken(randomUUID(),config);
    const params=new URLSearchParams({alf:'https://alfred.previo.app/login/DEMOXX',...(done?{done:'1'}:{}),...(unpaid?{unpaid:'1'}:{}),...(box?{box:'482751'}:{})});
-   const dom=new JSDOM(original,{runScripts:'dangerously',url:`https://www.pensionfalconi.cz/${lang}/${page}/?${params}#wallet=${token}`});
+   const fragment='wallet-'+Buffer.from(token).toString('hex');
+   // Previo treats the last hyphen-delimited fragment as an unquoted CSS selector.
+   assert.match(fragment.split('-').at(-1),/^[0-9a-f]+$/);
+   const dom=new JSDOM(original,{runScripts:'dangerously',url:`https://www.pensionfalconi.cz/${lang}/${page}/?${params}#${fragment}`});
    await settle();
    const root=dom.window.document.querySelector('#falconi-guest');
    const before=root.textContent,links=[...root.querySelectorAll('a')].map(a=>a.href);
@@ -103,8 +106,8 @@ test('Messenger original generators attach one card, clear stale identity, and k
  resolve({ok:true,json:async()=>({state:'pending',saveUrl:'https://pay.google.com/gp/v/save/test',guestToken:token})});await settle();
  assert.equal(q('walletOpen').hidden,false);
  for(const lang of ['cs','en','de']){
-  const url=w.buildUrl('https://www.pensionfalconi.cz',`/${lang}/checkin/`,{alf:'https://alfred.previo.app/login/DEMOXX',unpaid:1});assert.equal(new URL(url).hash,'#wallet='+token);assert.equal(new URL(url).searchParams.get('unpaid'),'1');
-  q('smsLang').value=lang==='cs'?'cz':lang;assert.equal(new URL(w.buildCodesLink(true)).hash,'#wallet='+token);
+  const url=w.buildUrl('https://www.pensionfalconi.cz',`/${lang}/checkin/`,{alf:'https://alfred.previo.app/login/DEMOXX',unpaid:1});assert.equal(new URL(url).hash,'#wallet-'+Buffer.from(token).toString('hex'));assert.equal(new URL(url).searchParams.get('unpaid'),'1');
+  q('smsLang').value=lang==='cs'?'cz':lang;assert.equal(new URL(w.buildCodesLink(true)).hash,'#wallet-'+Buffer.from(token).toString('hex'));
  }
  assert.equal(w.falconiWalletLink('https://hillside18.cz/cs/checkin/'),'https://hillside18.cz/cs/checkin/');
  assert.equal(w.falconiWalletLink('https://www.pensionfalconi.cz/cs/other/'),'https://www.pensionfalconi.cz/cs/other/');
@@ -122,7 +125,7 @@ test('UI crossover: edits, reset, hidden locker code, failed update and late res
   const token=guestToken(randomUUID(),config),url='https://www.pensionfalconi.cz/cs/checkin/?alf=DEMOXX';
   const success=()=>resolve({ok:true,json:async()=>({state:'ready',guestToken:token,saveUrl:'https://pay.google.com/gp/v/save/test'})});
   q('walletConfirm').checked=true;q('walletSync').click();success();await settle();
-  assert.ok(w.falconiWalletLink(url).includes('#wallet='));
+  assert.ok(w.falconiWalletLink(url).includes('#wallet-'));
   if(scenario==='clear')q('clear').click();
   else if(scenario==='history')w.document.dispatchEvent(new w.Event('falconi:stay-loaded'));
   else if(scenario==='failure'||scenario==='late-response'){
