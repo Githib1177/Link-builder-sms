@@ -542,7 +542,8 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       refreshLockerCmdPreview();
     }
 
-    function copySel(sel){
+    async function copySel(sel){
+      if(/^#(url(CZ|EN|DE)|sms|mail)/.test(sel)){try{await window.falconiPrepareLinks();}catch(error){Q('#smsStatus').textContent=error.message;return;}}
       const el = Q(sel);
       if(!el) return;
       const txt = el.value !== undefined ? el.value : el.textContent;
@@ -747,6 +748,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
     }
 
     async function saveHistory(rec){
+      if(rec.link&&window.falconiOriginalLink)rec={...rec,link:window.falconiOriginalLink(rec.link)};
       const response = await fetch('/api/sms-history', {
         method:'POST', credentials:'same-origin',
         headers:{ 'Content-Type':'application/json' },
@@ -1006,7 +1008,9 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
     // ===== Odeslání hlavní SMS hostům + (volitelně) kódování schránky =====
     async function sendSms(){
       if(sendInProgress) return;
-      gen();
+      setSendingState(true);
+      try{await window.falconiPrepareLinks();}catch(error){Q('#smsStatus').textContent=error.message;setSendingState(false);return;}
+      setSendingState(false);
       const toRaw = Q('#smsTo').value.trim();
       const lang  = Q('#smsLang').value;
       const text  = pickSmsText(lang);
@@ -1026,7 +1030,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
       }
 
       const boxCode = (Q('#box')?.value || '').trim();
-      const guestBoxMatch = /[?&]box=(\d{6})(?:&|\s|$)/.exec(text);
+      const guestBoxMatch = !Q('#noSendBoxInLink')?.checked && /^\d{6}$/.test(boxCode) ? [null,boxCode] : null;
       setSendingState(true);
       const confirmed = await confirmSending({
         numbers,
@@ -1181,6 +1185,9 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
           link=buildCodesLink(!noSend);
           text=`${codesPrefix(lang, !noSend)}\n${link}`;
         }
+        [link]=await window.falconiShortenLinks([link]);
+        if(formState()!==submittedForm)throw new Error('Údaje se změnily. Zkontrolujte je a odešlete znovu.');
+        text=`${codesPrefix(lang, !noSend)}\n${link}`;
         const id = crypto.randomUUID();
         if(statusEl) statusEl.textContent = 'Odesílám odkaz…';
         const resp = await fetch('/api/send-sms', {
@@ -1310,6 +1317,7 @@ Rezeption: +420 721 516 894 | E-Mail: recepce@falconi.cz`;
   </script>
 
   <script src="/wallet.js"></script>
+  <script src="/short-links.js"></script>
   <!-- Registrace service workeru kvůli „Přidat na plochu“ -->
   <script>
     if ('serviceWorker' in navigator) {

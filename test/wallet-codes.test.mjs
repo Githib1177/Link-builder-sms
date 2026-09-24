@@ -15,7 +15,7 @@ test('codes send updates the existing card before SMS, uses same fields, and fai
   q('alf').value='DEMOXX';q('box').value='482751';q('guest').value='Test';q('smsTo').value='+420123456789';q('smsLang').value='cz';q('base').value='https://www.pensionfalconi.cz';q('done').checked=scenario!=='incomplete';q('unpaid').checked=scenario==='unpaid';q('noSendBoxInLink').checked=scenario==='hide-code';
   let resolveWallet;
   w.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});if(url==='/api/wallet')return new Promise(r=>resolveWallet=r);return {ok:true,json:async()=>({successfulNumbers:['+420123456789'],failedNumbers:[]})};};
-  w.confirmSending=async()=>scenario!=='cancel';
+  w.falconiShortenLinks=async urls=>urls;w.confirmSending=async()=>scenario!=='cancel';
   w.normalizePhones=value=>[value];w.saveHistory=async()=>{};w.loadHistory=()=>{};w.showSendResult=()=>{};
   w.eval('const Q=s=>document.querySelector(s);let sendInProgress=false;function setSendingState(value){sendInProgress=value;}'+derive+send);
   w.eval(wallet);

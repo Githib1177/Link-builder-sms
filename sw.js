@@ -1,5 +1,5 @@
-const CACHE = 'falconi-messenger-v4-wallet';
-const SHELL = ['/wallet.js', '/monitor.js', '/monitor.css', '/', '/index.html', '/manifest.json', '/falconi-messenger-32.png', '/falconi-messenger-180.png'];
+const CACHE = 'falconi-messenger-v5-short-links';
+const SHELL = ['/short-links.js', '/wallet.js', '/monitor.js', '/monitor.css', '/', '/index.html', '/manifest.json', '/falconi-messenger-32.png', '/falconi-messenger-180.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
@@ -14,7 +14,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin || (url.pathname.startsWith('/api/') || url.pathname.startsWith('/s/'))) return;
   event.respondWith(
     fetch(request)
       .then(response => {

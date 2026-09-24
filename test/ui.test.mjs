@@ -67,7 +67,7 @@ test('sending flows keep gateway request and cloud history linked; partial guest
  };
  try{
   w.eval(monitor);for(const script of w.document.querySelectorAll('script:not([src])'))w.eval(script.textContent);
-  w.confirmSending=async()=>true;
+  w.falconiPrepareLinks=async()=>w.gen();w.falconiShortenLinks=async urls=>urls;w.confirmSending=async()=>true;
   $('#smsTo').value='+420777000000';$('#guest').value='Test';$('#alf').value='FIXTURE';$('#box').value='123456';$('#lockerNo').value='04';$('#doBoxCode').checked=true;
   await w.sendSms();await wait();
   assert.equal(sends.length,2);assert.equal(histories.length,2);
